@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Retron Desktop · OrgChem Mastery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: #d8dfea;
+    background-image:
+      radial-gradient(1200px 800px at 20% 15%, #e7e1ce 0%, transparent 55%),
+      radial-gradient(1000px 700px at 85% 70%, #bfd4e3 0%, transparent 55%),
+      linear-gradient(135deg, #d8dfea 0%, #c8cfdc 100%);
+    min-height: 100vh;
+  }
+  * { box-sizing: border-box; }
+  button { font-family: inherit; }
+
+  .tweaks {
+    position: fixed; bottom: 24px; right: 24px; z-index: 100;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 18px; padding: 14px; min-width: 240px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  }
+  .tweaks h4 {
+    margin: 0 0 10px; font-size: 10px; letter-spacing: 1.6px;
+    font-family: "JetBrains Mono", ui-monospace;
+    color: rgba(0,0,0,0.55); text-transform: uppercase; font-weight: 700;
+  }
+  .theme-row { display: flex; gap: 8px; }
+  .swatch {
+    width: 54px; height: 44px; border-radius: 10px; cursor: pointer;
+    transition: all .15s;
+    display: flex; align-items: flex-end; padding: 6px;
+    font-size: 9px; font-weight: 700; font-family: "JetBrains Mono", ui-monospace;
+  }
+
+  .density-row { display: flex; gap: 6px; margin-top: 6px; }
+  .density-btn {
+    flex: 1; padding: 7px 10px; border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.1); background: #fff;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    font-family: "JetBrains Mono", ui-monospace;
+  }
+  .density-btn.active { background: #0E0E0C; color: #fff; border-color: #0E0E0C; }
+
+  .stage-caption {
+    font-family: "JetBrains Mono", ui-monospace;
+    text-align: center;
+    color: rgba(0,0,0,0.55); font-size: 11px; letter-spacing: 2px;
+    font-weight: 600; margin-bottom: 18px;
+  }
+  .stage-caption .sub {
+    display: block; font-size: 10px; letter-spacing: 1.4px; margin-top: 4px;
+    color: rgba(0,0,0,0.38); font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+// ═══ frames/macos-window.jsx ═══
+
+// MacOS.jsx — Simplified macOS Tahoe (Liquid Glass) window
+// Based on the macOS Tahoe UI Kit. No image assets, no dependencies.
+// Exports: MacWindow, MacSidebar, MacSidebarItem, MacToolbar, MacGlass, MacTrafficLights
+
+const MAC_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif';
+
+// ─────────────────────────────────────────────────────────────
+// Liquid glass primitive — blur + white tint + inset highlight
+// ─────────────────────────────────────────────────────────────
+function MacGlass({ children, radius = 296, dark = false, style = {} }) {
+  return (
+    <div style={{ position: 'relative', borderRadius: radius, ...style }}>
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: radius,
+        background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.35)',
+        backdropFilter: 'blur(40px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+        border: dark ? '0.5px solid rgba(255,255,255,0.12)' : '0.5px solid rgba(255,255,255,0.6)',
+        boxShadow: dark
+          ? '0 8px 40px rgba(0,0,0,0.2)'
+          : '0 8px 40px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.4)',
+      }} />
+      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Traffic lights (14px, Tahoe colors)
+// ─────────────────────────────────────────────────────────────
+function MacTrafficLights({ style = {} }) {
+  const dot = (bg) => (
+    <div style={{
+      width: 14, height: 14, borderRadius: '50%', background: bg,
+      border: '0.5px solid rgba(0,0,0,0.1)',
+    }} />
+  );
+  return (
+    <div style={{ display: 'flex', gap: 9, alignItems: 'center', padding: 1, ...style }}>
+      {dot('#ff736a')}{dot('#febc2e')}{dot('#19c332')}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Toolbar — title + single glass pill icon
+// ─────────────────────────────────────────────────────────────
+function MacToolbar({ title = 'Folder' }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 8, alignItems: 'center', padding: 8, flexShrink: 0,
+    }}>
+      {/* title */}
+      <div style={{
+        fontFamily: MAC_FONT, fontSize: 15, fontWeight: 700,
+        color: 'rgba(0,0,0,0.85)', whiteSpace: 'nowrap', paddingLeft: 8,
+      }}>{title}</div>
+      <div style={{ flex: 1 }} />
+      {/* single action */}
+      <MacGlass>
+        <div style={{
+          width: 36, height: 36, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#4c4c4c', opacity: 0.4 }} />
+        </div>
+      </MacGlass>
+      {/* search */}
+      <MacGlass>
+        <div style={{
+          width: 140, height: 36, display: 'flex', alignItems: 'center',
+          gap: 6, padding: '0 12px',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <circle cx="5.5" cy="5.5" r="4" stroke="#727272" strokeWidth="1.5"/>
+            <path d="M8.5 8.5l3 3" stroke="#727272" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <span style={{
+            fontFamily: MAC_FONT, fontSize: 13, fontWeight: 500, color: '#727272',
+          }}>Search</span>
+        </div>
+      </MacGlass>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sidebar — frosted glass panel floating inside the window
+// ─────────────────────────────────────────────────────────────
+function MacSidebarItem({ label, selected = false }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      height: 24, padding: '4px 10px 4px 6px', margin: '0 10px',
+      borderRadius: 8, position: 'relative',
+      fontFamily: MAC_FONT, fontSize: 11, fontWeight: 500,
+    }}>
+      {selected && (
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 8,
+          background: 'rgba(0,0,0,0.11)', mixBlendMode: 'multiply',
+        }} />
+      )}
+      <div style={{
+        width: 14, height: 14, borderRadius: '50%',
+        background: selected ? '#007aff' : 'rgba(0,0,0,0.4)',
+        opacity: selected ? 1 : 0.5, flexShrink: 0, position: 'relative',
+      }} />
+      <span style={{ color: 'rgba(0,0,0,0.85)', position: 'relative' }}>{label}</span>
+    </div>
+  );
+}
+
+function MacSidebar({ children }) {
+  return (
+    <div style={{
+      width: 220, height: '100%', padding: 8, flexShrink: 0,
+      position: 'relative', display: 'flex', flexDirection: 'column',
+    }}>
+      {/* glass panel */}
+      <div style={{
+        position: 'absolute', inset: 8, borderRadius: 18,
+        background: 'rgba(210,225,245,0.45)',
+        backdropFilter: 'blur(50px) saturate(200%)',
+        WebkitBackdropFilter: 'blur(50px) saturate(200%)',
+        border: '0.5px solid rgba(255,255,255,0.5)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.35)',
+      }} />
+      {/* content */}
+      <div style={{
+        position: 'relative', zIndex: 1, padding: '10px 0',
+        display: 'flex', flexDirection: 'column', gap: 2,
+      }}>
+        {/* window controls + sidebar toggle */}
+        <div style={{
+          height: 32, display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', padding: '0 10px', marginBottom: 4,
+        }}>
+          <MacTrafficLights />
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MacSidebarHeader({ title }) {
+  return (
+    <div style={{
+      padding: '14px 18px 5px',
+      fontFamily: MAC_FONT, fontSize: 11, fontWeight: 700,
+      color: 'rgba(0,0,0,0.5)',
+    }}>{title}</div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Window — r:26, big shadow, sidebar + toolbar + content
+// ─────────────────────────────────────────────────────────────
+function MacWindow({
+  width = 900, height = 600, title = 'Folder',
+  sidebar, children,
+}) {
+  return (
+    <div style={{
+      width, height, borderRadius: 26, overflow: 'hidden',
+      background: '#fff',
+      boxShadow: '0 0 0 1px rgba(0,0,0,0.23), 0 16px 48px rgba(0,0,0,0.35)',
+      display: 'flex', position: 'relative',
+      fontFamily: MAC_FONT,
+    }}>
+      <MacSidebar>{sidebar}</MacSidebar>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <MacToolbar title={title} />
+        <div style={{ flex: 1, overflow: 'auto', padding: '4px 8px' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, {
+  MacWindow, MacSidebar, MacSidebarItem, MacSidebarHeader,
+  MacToolbar, MacGlass, MacTrafficLights,
+});
+
+
+// ═══ app/molecules.jsx ═══
+// Skeletal molecule SVG primitives.
+// Everything is drawn in a normalized coordinate space; compose via <Mol>.
+// Keep these PRIMITIVE — just bonds, atoms, arrows. No gradients, no noise.
+
+const BOND_COLOR = 'var(--mol-ink, #0E0E0C)';
+const BOND_W = 1.8;
+const ATOM_FONT = '600 15px -apple-system, system-ui';
+const SUB_FONT = '600 10px -apple-system, system-ui';
+
+// A single bond between two points. `order` = 1|2|3, `style` = 'plain'|'wedge'|'dash'
+function Bond({ x1, y1, x2, y2, order = 1, style = 'plain', color = BOND_COLOR }) {
+  if (style === 'wedge') {
+    // solid triangle
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const w = 4;
+    const p1x = x2 + nx * w, p1y = y2 + ny * w;
+    const p2x = x2 - nx * w, p2y = y2 - ny * w;
+    return <polygon points={`${x1},${y1} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} />;
+  }
+  if (style === 'dash') {
+    // hashed wedge (perpendicular short lines, increasing length)
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const steps = 6;
+    return (
+      <g>
+        {Array.from({ length: steps }, (_, i) => {
+          const t = (i + 1) / steps;
+          const cx = x1 + dx * t, cy = y1 + dy * t;
+          const w = 1 + t * 4;
+          return <line key={i} x1={cx + nx * w} y1={cy + ny * w} x2={cx - nx * w} y2={cy - ny * w} stroke={color} strokeWidth={1.5} strokeLinecap="round" />;
+        })}
+      </g>
+    );
+  }
+  if (order === 2) {
+    // Double bond — parallel line offset
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const off = 3.2;
+    const shrink = 0.18;
+    const sx = x1 + dx * shrink, sy = y1 + dy * shrink;
+    const ex = x2 - dx * shrink, ey = y2 - dy * shrink;
+    return (
+      <g>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={BOND_W} strokeLinecap="round" />
+        <line x1={sx + nx * off} y1={sy + ny * off} x2={ex + nx * off} y2={ey + ny * off} stroke={color} strokeWidth={BOND_W} strokeLinecap="round" />
+      </g>
+    );
+  }
+  if (order === 3) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const off = 3;
+    return (
+      <g>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={BOND_W} strokeLinecap="round" />
+        <line x1={x1 + nx * off} y1={y1 + ny * off} x2={x2 + nx * off} y2={y2 + ny * off} stroke={color} strokeWidth={BOND_W} strokeLinecap="round" />
+        <line x1={x1 - nx * off} y1={y1 - ny * off} x2={x2 - nx * off} y2={y2 - ny * off} stroke={color} strokeWidth={BOND_W} strokeLinecap="round" />
+      </g>
+    );
+  }
+  return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={BOND_W} strokeLinecap="round" />;
+}
+
+// A heteroatom label with optional subscript and charge
+function Atom({ x, y, label, sub, charge, bg = 'var(--mol-bg, #FAFAF7)', color = BOND_COLOR }) {
+  const w = label.length > 1 ? 18 : 14;
+  return (
+    <g>
+      <circle cx={x} cy={y} r={w / 2 + 2} fill={bg} />
+      <text x={x} y={y + 4.5} textAnchor="middle" style={{ font: ATOM_FONT }} fill={color}>{label}</text>
+      {sub && <text x={x + 8} y={y + 8} textAnchor="start" style={{ font: SUB_FONT }} fill={color}>{sub}</text>}
+      {charge && (
+        <g>
+          <circle cx={x + 9} cy={y - 8} r={5} fill="none" stroke={color} strokeWidth={1} />
+          <text x={x + 9} y={y - 5} textAnchor="middle" style={{ font: '700 8px system-ui' }} fill={color}>{charge}</text>
+        </g>
+      )}
+    </g>
+  );
+}
+
+// Curved arrow — full-head (bond-forming/breaking, pair of electrons)
+// Pass start/end and control; the SVG draws a cubic-bezier with an arrowhead
+function CurvedArrow({ from, to, ctrl, color = 'var(--mol-accent, #C1512B)', active = false, width = 1.8 }) {
+  const id = React.useMemo(() => 'ah' + Math.random().toString(36).slice(2, 8), []);
+  return (
+    <g style={{ opacity: active ? 1 : 0.92 }}>
+      <defs>
+        <marker id={id} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill={color} />
+        </marker>
+      </defs>
+      <path
+        d={`M ${from[0]} ${from[1]} Q ${ctrl[0]} ${ctrl[1]} ${to[0]} ${to[1]}`}
+        fill="none"
+        stroke={color}
+        strokeWidth={width}
+        strokeLinecap="round"
+        markerEnd={`url(#${id})`}
+        style={active ? { filter: 'drop-shadow(0 0 3px ' + color + '80)' } : {}}
+      />
+    </g>
+  );
+}
+
+// Reaction arrow with reagents above and conditions below
+function RxnArrow({ x = 0, y = 0, w = 90, above, below }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      {above && (
+        <text x={w / 2} y={-8} textAnchor="middle" style={{ font: '600 11px "JetBrains Mono", ui-monospace' }} fill="var(--mol-ink, #0E0E0C)">
+          {above}
+        </text>
+      )}
+      <line x1={0} y1={0} x2={w - 4} y2={0} stroke="var(--mol-ink, #0E0E0C)" strokeWidth={1.5} />
+      <polygon points={`${w - 8},-3 ${w},0 ${w - 8},3`} fill="var(--mol-ink, #0E0E0C)" />
+      {below && (
+        <text x={w / 2} y={14} textAnchor="middle" style={{ font: '500 10px "JetBrains Mono", ui-monospace' }} fill="var(--mol-muted, #555)">
+          {below}
+        </text>
+      )}
+    </g>
+  );
+}
+
+// Wrapper SVG with viewBox; children draw molecules
+function Mol({ w = 200, h = 120, vb, children, style }) {
+  return (
+    <svg width={w} height={h} viewBox={vb || `0 0 ${w} ${h}`} style={{ overflow: 'visible', ...style }}>
+      {children}
+    </svg>
+  );
+}
+
+Object.assign(window, { Bond, Atom, CurvedArrow, RxnArrow, Mol });
+
+
+// ═══ app/structures.jsx ═══
+// Named skeletal structures used across the app.
+// Each is a pure function returning SVG children; compose inside <Mol>.
+// Coordinate conventions: each structure is designed to fit comfortably in
+// a ~200x100 viewBox unless noted. Anchor points are exported for arrows.
+
+// ── utility: zigzag chain ───────────────────────────────────────────────
+function zigzag(x0, y0, n, step = 18, up = true) {
+  const pts = [[x0, y0]];
+  let dir = up ? -1 : 1;
+  for (let i = 1; i <= n; i++) {
+    const last = pts[pts.length - 1];
+    const dy = dir * 10;
+    pts.push([last[0] + step, last[1] + dy]);
+    dir = -dir;
+  }
+  return pts;
+}
+
+// Benzene ring, centered at (cx,cy), radius r
+function Benzene({ cx, cy, r = 22, doubleBonds = true, aromaticCircle = false }) {
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 3) * i - Math.PI / 2;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+  return (
+    <g>
+      {pts.map((p, i) => {
+        const q = pts[(i + 1) % 6];
+        const isDouble = doubleBonds && !aromaticCircle && i % 2 === 0;
+        return <Bond key={i} x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} order={isDouble ? 2 : 1} />;
+      })}
+      {aromaticCircle && <circle cx={cx} cy={cy} r={r * 0.55} fill="none" stroke="var(--mol-ink, #0E0E0C)" strokeWidth={1.5} />}
+    </g>
+  );
+}
+
+// ─── Structure 1: Ethyl acetate (carboxylic acid derivative) ──────────────
+function EthylAcetate({ x = 10, y = 50 }) {
+  // CH3 - C(=O) - O - CH2 - CH3
+  const p = [
+    [x, y],           // CH3 left
+    [x + 22, y + 12], // C
+    [x + 44, y],      // O (ester)
+    [x + 66, y + 12], // CH2
+    [x + 88, y],      // CH3
+  ];
+  return (
+    <g>
+      <Bond x1={p[0][0]} y1={p[0][1]} x2={p[1][0]} y2={p[1][1]} />
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[2][0]} y2={p[2][1]} />
+      <Bond x1={p[2][0]} y1={p[2][1]} x2={p[3][0]} y2={p[3][1]} />
+      <Bond x1={p[3][0]} y1={p[3][1]} x2={p[4][0]} y2={p[4][1]} />
+      {/* carbonyl up */}
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[1][0]} y2={p[1][1] - 18} order={2} />
+      <Atom x={p[1][0]} y={p[1][1] - 22} label="O" />
+      <Atom x={p[2][0]} y={p[2][1]} label="O" />
+    </g>
+  );
+}
+
+// ─── Structure 2: Acetyl chloride ─────────────────────────────────────────
+function AcetylChloride({ x = 10, y = 50 }) {
+  const p = [
+    [x, y],           // CH3
+    [x + 22, y + 12], // C
+    [x + 46, y],      // Cl
+  ];
+  return (
+    <g>
+      <Bond x1={p[0][0]} y1={p[0][1]} x2={p[1][0]} y2={p[1][1]} />
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[2][0]} y2={p[2][1]} />
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[1][0]} y2={p[1][1] - 18} order={2} />
+      <Atom x={p[1][0]} y={p[1][1] - 22} label="O" />
+      <Atom x={p[2][0]} y={p[2][1]} label="Cl" />
+    </g>
+  );
+}
+
+// ─── Structure 3: Generic acyl chloride + amine → amide product ───────────
+function Amide({ x = 10, y = 50 }) {
+  // R - C(=O) - NH - R'
+  const p = [
+    [x, y],           // CH3
+    [x + 22, y + 12], // C
+    [x + 46, y],      // N
+    [x + 68, y + 12], // CH2
+    [x + 90, y],      // CH3
+  ];
+  return (
+    <g>
+      <Bond x1={p[0][0]} y1={p[0][1]} x2={p[1][0]} y2={p[1][1]} />
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[2][0]} y2={p[2][1]} />
+      <Bond x1={p[2][0]} y1={p[2][1]} x2={p[3][0]} y2={p[3][1]} />
+      <Bond x1={p[3][0]} y1={p[3][1]} x2={p[4][0]} y2={p[4][1]} />
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[1][0]} y2={p[1][1] - 18} order={2} />
+      <Atom x={p[1][0]} y={p[1][1] - 22} label="O" />
+      <Atom x={p[2][0]} y={p[2][1]} label="N" sub="H" />
+    </g>
+  );
+}
+
+// ─── Structure 4: Carboxylic acid (propanoic acid) ───────────────────────
+function PropanoicAcid({ x = 10, y = 50 }) {
+  const p = [
+    [x, y],           // CH3
+    [x + 22, y + 12],
+    [x + 44, y],      // C
+    [x + 66, y + 12], // OH
+  ];
+  return (
+    <g>
+      <Bond x1={p[0][0]} y1={p[0][1]} x2={p[1][0]} y2={p[1][1]} />
+      <Bond x1={p[1][0]} y1={p[1][1]} x2={p[2][0]} y2={p[2][1]} />
+      <Bond x1={p[2][0]} y1={p[2][1]} x2={p[3][0]} y2={p[3][1]} />
+      <Bond x1={p[2][0]} y1={p[2][1]} x2={p[2][0]} y2={p[2][1] - 18} order={2} />
+      <Atom x={p[2][0]} y={p[2][1] - 22} label="O" />
+      <Atom x={p[3][0]} y={p[3][1]} label="OH" />
+    </g>
+  );
+}
+
+// ─── Structure 5: Methyl benzoate (aromatic ester) ────────────────────────
+function MethylBenzoate({ x = 30, y = 60 }) {
+  return (
+    <g>
+      <Benzene cx={x} cy={y} r={20} />
+      {/* carbonyl C off ring at 0° */}
+      <Bond x1={x + 20} y1={y} x2={x + 42} y2={y - 10} />
+      <Bond x1={x + 42} y1={y - 10} x2={x + 42} y2={y - 28} order={2} />
+      <Atom x={x + 42} y={y - 32} label="O" />
+      <Bond x1={x + 42} y1={y - 10} x2={x + 64} y2={y} />
+      <Atom x={x + 64} y={y} label="O" />
+      <Bond x1={x + 64} y1={y} x2={x + 86} y2={y - 10} />
+    </g>
+  );
+}
+
+// ─── Structure 6: Nucleophile HO- ─────────────────────────────────────────
+function Hydroxide({ x = 0, y = 0 }) {
+  return (
+    <g>
+      <Atom x={x} y={y} label="HO" charge="−" />
+    </g>
+  );
+}
+
+// ─── Structure 7: Tetrahedral intermediate (generic) ──────────────────────
+function TetrahedralInt({ x = 30, y = 50 }) {
+  return (
+    <g>
+      {/* central C implicit */}
+      <Bond x1={x} y1={y} x2={x - 18} y2={y + 8} />           {/* R */}
+      <Bond x1={x} y1={y} x2={x + 18} y2={y - 14} style={"wedge"} /> {/* OR */}
+      <Bond x1={x} y1={y} x2={x} y2={y - 22} />                {/* O− */}
+      <Bond x1={x} y1={y} x2={x + 14} y2={y + 14} style={"dash"} /> {/* Nu */}
+      <Atom x={x} y={y - 26} label="O" charge="−" />
+      <Atom x={x - 22} y={y + 10} label="R" />
+      <Atom x={x + 22} y={y - 16} label="OR'" />
+    </g>
+  );
+}
+
+// ─── 1H NMR mini-spectrum (peaks) ─────────────────────────────────────────
+function NMRSpectrum({ w = 320, h = 140, peaks, highlight }) {
+  // peaks: [{ shift, h, split, label }] — shift in ppm (0–10)
+  const pad = 24;
+  const xAt = (ppm) => pad + ((10 - ppm) / 10) * (w - pad * 2);
+  const baseY = h - 28;
+  return (
+    <svg width={w} height={h} style={{ overflow: 'visible' }}>
+      {/* baseline */}
+      <line x1={pad} y1={baseY} x2={w - pad} y2={baseY} stroke="var(--mol-ink)" strokeWidth={1} />
+      {/* ppm ticks */}
+      {[0,1,2,3,4,5,6,7,8,9,10].map(p => (
+        <g key={p}>
+          <line x1={xAt(p)} y1={baseY} x2={xAt(p)} y2={baseY + 4} stroke="var(--mol-ink)" strokeWidth={1} />
+          <text x={xAt(p)} y={baseY + 16} textAnchor="middle" style={{ font: '500 9px "JetBrains Mono", ui-monospace' }} fill="var(--mol-muted)">{p}</text>
+        </g>
+      ))}
+      <text x={w - pad} y={baseY + 28} textAnchor="end" style={{ font: '500 9px "JetBrains Mono", ui-monospace' }} fill="var(--mol-muted)">δ (ppm)</text>
+      {/* peaks */}
+      {peaks.map((pk, i) => {
+        const cx = xAt(pk.shift);
+        const top = baseY - pk.h;
+        const isHi = highlight === i;
+        const color = isHi ? 'var(--accent)' : 'var(--mol-ink)';
+        // multiplet spacing — draw small peaks for singlet=1, doublet=2, etc.
+        const nLines = pk.split || 1;
+        const spacing = 3;
+        return (
+          <g key={i}>
+            {Array.from({ length: nLines }, (_, k) => {
+              const off = (k - (nLines - 1) / 2) * spacing;
+              return <line key={k} x1={cx + off} y1={baseY} x2={cx + off} y2={top} stroke={color} strokeWidth={1.4} />;
+            })}
+            {pk.label && (
+              <text x={cx} y={top - 6} textAnchor="middle" style={{ font: '600 10px "JetBrains Mono", ui-monospace' }} fill={color}>
+                {pk.label}
+              </text>
+            )}
+            {isHi && <circle cx={cx} cy={top - 18} r={3} fill="var(--accent)" />}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+Object.assign(window, {
+  Benzene, EthylAcetate, AcetylChloride, Amide, PropanoicAcid,
+  MethylBenzoate, Hydroxide, TetrahedralInt, NMRSpectrum, zigzag,
+});
+
+
+// ═══ app/questions.jsx ═══
+// Question bank — ACS/grad-level, focused on Connor's chosen topics.
+// Types: 'mc' (multiple choice), 'arrow' (arrow-pushing — pick which bond/atom
+// the arrow goes between), 'retro' (tap disconnection), 'nmr' (match peak).
+//
+// Each question is self-contained and knows how to render its own body via a
+// type tag consumed by the Question screen.
+
+const QUESTIONS = [
+  // ── Mechanism / arrow-pushing ───────────────────────────────────────────
+  {
+    id: 'acyl-sub-1',
+    topic: 'Carboxylic Acid Derivatives',
+    type: 'mechanism',
+    difficulty: 'ACS',
+    prompt: 'In the base-catalyzed hydrolysis of methyl benzoate, which step is RATE-DETERMINING?',
+    options: [
+      { label: 'Deprotonation of water by hydroxide', correct: false },
+      { label: 'Nucleophilic addition of OH⁻ to the carbonyl', correct: true },
+      { label: 'Collapse of tetrahedral intermediate, loss of methoxide', correct: false },
+      { label: 'Proton transfer to generate benzoate', correct: false },
+    ],
+    explanation: 'Addition of hydroxide to form the tetrahedral intermediate is the slow step for most BAC2 ester hydrolyses — sp² → sp³ rehybridization with charge development.',
+    reactant: 'MethylBenzoate',
+  },
+  {
+    id: 'arrow-1',
+    topic: 'Arrow Pushing',
+    type: 'arrow',
+    difficulty: 'ACS',
+    prompt: 'Draw the first curved arrow in the acid-catalyzed Fischer esterification. Where does the arrow originate?',
+    arrowChoices: [
+      { id: 'a', label: "From the carbonyl O lone pair", correct: true, from: [80, 28], to: [75, 18] },
+      { id: 'b', label: "From the C=O π bond", correct: false, from: [102, 40], to: [102, 28] },
+      { id: 'c', label: "From the α-carbon C–H", correct: false, from: [60, 60], to: [80, 52] },
+      { id: 'd', label: "From the methanol O–H", correct: false, from: [160, 50], to: [150, 50] },
+    ],
+    explanation: 'Protonation of the carbonyl oxygen is the activating first step — a lone pair on the carbonyl O picks up H⁺ from the acid catalyst, increasing electrophilicity of the carbonyl carbon.',
+  },
+  {
+    id: 'retro-1',
+    topic: 'Retrosynthesis',
+    type: 'retro',
+    difficulty: 'ACS',
+    prompt: 'Target: N-ethyl acetamide. Which disconnection gives the most practical forward synthesis?',
+    options: [
+      { label: 'C–N bond → acetyl chloride + ethylamine', correct: true },
+      { label: 'C–C bond → formaldehyde + methyl Grignard', correct: false },
+      { label: 'C=O bond → ethylamine + ketene oxidation', correct: false },
+      { label: 'N–H bond → imine reduction', correct: false },
+    ],
+    explanation: 'Acyl halide + amine (Schotten–Baumann) is the highest-yielding, cleanest route — direct acid + amine needs coupling reagents or heat to overcome the ammonium carboxylate salt.',
+  },
+  {
+    id: 'reagent-1',
+    topic: 'Name the Reagent',
+    type: 'reagent',
+    difficulty: 'ACS',
+    prompt: 'Convert a carboxylic acid → acyl chloride. Which reagent is preferred for acid-sensitive substrates?',
+    options: [
+      { label: 'SOCl₂', correct: false, detail: 'Cheap but generates HCl' },
+      { label: '(COCl)₂ / cat. DMF', correct: true, detail: 'Oxalyl chloride — mild, volatile byproducts' },
+      { label: 'PCl₅', correct: false, detail: 'Harsh, POCl₃ byproduct' },
+      { label: 'Cl₂ / hν', correct: false, detail: 'Radical chlorination, not applicable' },
+    ],
+    explanation: 'Oxalyl chloride with catalytic DMF is preferred for sensitive substrates — byproducts (CO, CO₂, HCl) are gaseous and purification is trivial.',
+  },
+  {
+    id: 'product-1',
+    topic: 'Predict the Product',
+    type: 'product',
+    difficulty: 'ACS',
+    prompt: 'Ethyl acetate + excess CH₃MgBr, then H₃O⁺. Major product?',
+    reactant: 'EthylAcetate',
+    reagents: '2 eq CH₃MgBr',
+    conditions: 'then H₃O⁺',
+    options: [
+      { label: 'tert-butanol (2-methyl-2-propanol)', correct: true },
+      { label: 'Methyl ethyl ketone', correct: false },
+      { label: 'Acetaldehyde', correct: false },
+      { label: 'No reaction — ester is inert', correct: false },
+    ],
+    explanation: 'Esters undergo double addition with Grignards: first addition gives a ketone intermediate that is more reactive than the ester, so a second equivalent adds to give a tertiary alcohol. Two methyls + the original methyl + OH = t-butanol.',
+  },
+  {
+    id: 'mech-2',
+    topic: 'Identify Mechanism',
+    type: 'mechanism',
+    difficulty: 'ACS',
+    prompt: 'Acetyl chloride + methanol (no catalyst, 0 °C). Mechanism?',
+    reactant: 'AcetylChloride',
+    options: [
+      { label: 'Addition–elimination (tetrahedral intermediate)', correct: true },
+      { label: 'SN2 at carbonyl carbon (concerted)', correct: false },
+      { label: 'SN1 via acylium ion', correct: false },
+      { label: 'Radical chain', correct: false },
+    ],
+    explanation: 'Acyl chlorides go via classic addition–elimination: MeOH adds to the carbonyl forming a tetrahedral intermediate; chloride (excellent LG) departs to regenerate the C=O. SN1 acylium only appears in very polar / cationic conditions.',
+  },
+  {
+    id: 'nmr-1',
+    topic: 'NMR Spectroscopy',
+    type: 'nmr',
+    difficulty: 'ACS',
+    prompt: 'A compound shows ¹H NMR: δ 4.12 (q, 2H), 2.05 (s, 3H), 1.26 (t, 3H). Tap the peak most diagnostic for an ETHYL ESTER.',
+    peaks: [
+      { shift: 4.12, h: 60, split: 4, label: 'q' },
+      { shift: 2.05, h: 70, split: 1, label: 's' },
+      { shift: 1.26, h: 75, split: 3, label: 't' },
+    ],
+    correctPeak: 0,
+    explanation: 'The quartet at δ 4.12 (OCH₂) is the fingerprint of an ethyl ester — O-deshielding pushes CH₂ downfield, and coupling to the adjacent CH₃ gives a clean quartet.',
+  },
+  {
+    id: 'ir-1',
+    topic: 'IR Spectroscopy',
+    type: 'mechanism',
+    difficulty: 'ACS',
+    prompt: 'IR shows a strong, sharp band at 1735 cm⁻¹ and no broad O–H. Most likely functional group?',
+    options: [
+      { label: 'Carboxylic acid', correct: false },
+      { label: 'Ester (C=O)', correct: true },
+      { label: 'Amide', correct: false },
+      { label: 'Anhydride', correct: false },
+    ],
+    explanation: 'Esters absorb around 1735–1750 cm⁻¹. Carboxylic acids would show a broad O–H (2500–3300). Amides are lower (~1680). Anhydrides give two bands (~1820 and 1750).',
+  },
+];
+
+const TOPICS = [
+  { id: 'arrow', name: 'Arrow Pushing', n: 24, locked: false, progress: 0.62 },
+  { id: 'retro', name: 'Retrosynthesis', n: 18, locked: false, progress: 0.44 },
+  { id: 'cad',   name: 'Carbonyl Derivatives', n: 32, locked: false, progress: 0.71 },
+  { id: 'spec',  name: 'Spectroscopy', n: 28, locked: false, progress: 0.33 },
+  { id: 'mech',  name: 'Mechanism ID', n: 22, locked: false, progress: 0.55 },
+  { id: 'reag',  name: 'Name the Reagent', n: 40, locked: false, progress: 0.28 },
+];
+
+Object.assign(window, { QUESTIONS, TOPICS });
+
+
+// ═══ app/ChemLab.jsx ═══
+// Desktop ChemLab — split layout: sidebar + question pane + explanation pane.
+// Drag-to-draw arrow pushing on SVG canvas. Keyboard shortcuts 1-4 for MC.
+// ⌘K / Ctrl+K for command palette (topic/mode switcher).
+
+function ChemLab({ theme, setThemeKey, themeKey, themes, density, setDensity }) {
+  const [screen, setScreen] = React.useState('quiz'); // quiz | explanation | done
+  const [qIdx, setQIdx] = React.useState(0);
+  const [selected, setSelected] = React.useState(null);
+  const [submitted, setSubmitted] = React.useState(false);
+  const [wasCorrect, setWasCorrect] = React.useState(false);
+  const [streak, setStreak] = React.useState(14);
+  const [xp, setXp] = React.useState(2840);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [dragArrow, setDragArrow] = React.useState(null); // for drag-to-draw
+
+  const quiz = QUESTIONS.slice(0, 6);
+  const q = quiz[qIdx];
+  const ink = '#0E0E0C', bg = '#FAFAF7', muted = 'rgba(14,14,12,0.55)', line = 'rgba(14,14,12,0.08)';
+
+  // keyboard shortcuts
+  React.useEffect(() => {
+    const h = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen(p => !p);
+        return;
+      }
+      if (paletteOpen) {
+        if (e.key === 'Escape') setPaletteOpen(false);
+        return;
+      }
+      if (screen !== 'quiz' || submitted) return;
+      if (q.type === 'arrow') return; // handled by drag
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= (q.options?.length || 4)) setSelected(num - 1);
+      if (e.key === 'Enter' && selected != null) submit();
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [screen, submitted, selected, q, paletteOpen]);
+
+  React.useEffect(() => {
+    setSelected(null); setSubmitted(false); setDragArrow(null);
+  }, [qIdx]);
+
+  const submit = () => {
+    if (submitted) return;
+    let correct = false;
+    if (q.type === 'arrow') {
+      correct = dragArrow?.correctChoice === true;
+    } else if (q.type === 'nmr') {
+      correct = selected === q.correctPeak;
+    } else {
+      correct = !!q.options?.[selected]?.correct;
+    }
+    setWasCorrect(correct);
+    setSubmitted(true);
+    if (correct) { setStreak(s => s + 1); setXp(x => x + 36); }
+    setTimeout(() => setScreen('explanation'), 400);
+  };
+
+  const next = () => {
+    const n = qIdx + 1;
+    if (n >= quiz.length) { setScreen('done'); }
+    else { setQIdx(n); setScreen('quiz'); }
+  };
+
+  const pad = density === 'compact' ? 20 : 32;
+
+  // ──────── Sidebar ─────────────
+  const sidebar = (
+    <>
+      <MacSidebarHeader title="" />
+      <div style={{ padding: '0 18px 8px' }}>
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.4, color: ink }}>Retron</div>
+        <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600, marginTop: 2 }}>
+          ORGO II · ACS PREP
+        </div>
+      </div>
+
+      {/* streak */}
+      <div style={{ margin: '6px 14px 14px', padding: 12, borderRadius: 12, background: '#fff', border: `1px solid ${line}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: theme.accent, letterSpacing: -0.8 }}>{streak}</div>
+          <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600 }}>DAY STREAK</div>
+        </div>
+        <div style={{ marginTop: 6, display: 'flex', gap: 3 }}>
+          {Array.from({ length: 14 }, (_, i) => (
+            <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < streak % 14 || streak >= 14 ? theme.accent : line }} />
+          ))}
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>
+          LVL 07 · {xp} XP
+        </div>
+      </div>
+
+      <MacSidebarHeader title="TOPICS" />
+      {TOPICS.map((t, i) => (
+        <div key={t.id} style={{
+          margin: '0 10px', padding: '7px 10px', borderRadius: 8,
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: i === 0 ? theme.accentSoft : 'transparent',
+          cursor: 'pointer',
+        }}>
+          <div style={{ width: 6, height: 6, borderRadius: 3, background: i === 0 ? theme.accent : muted, opacity: i === 0 ? 1 : 0.4, flexShrink: 0 }} />
+          <div style={{ flex: 1, fontSize: 12, color: ink, fontWeight: 500 }}>{t.name}</div>
+          <div style={{ fontSize: 10, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>{Math.round(t.progress * 100)}%</div>
+        </div>
+      ))}
+
+      <MacSidebarHeader title="MODES" />
+      {['Daily Challenge', 'Quick Quiz · 5Q', 'Study Mode', 'Stats'].map((m, i) => (
+        <div key={m} style={{
+          margin: '0 10px', padding: '6px 10px', borderRadius: 8,
+          fontSize: 12, color: ink, fontWeight: 500,
+          background: i === 0 ? 'rgba(0,0,0,0.06)' : 'transparent',
+        }}>{m}</div>
+      ))}
+
+      <div style={{ flex: 1 }} />
+
+      {/* Connor profile chip */}
+      <div style={{ margin: '10px 14px', padding: 10, borderRadius: 12, background: 'rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 16, background: theme.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>CR</div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: ink }}>Connor</div>
+          <div style={{ fontSize: 10, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>RUTGERS · SOAS</div>
+        </div>
+      </div>
+    </>
+  );
+
+  // ──────── Main content ─────────────
+  let main;
+  if (screen === 'done') {
+    main = <SessionComplete streak={streak} xpGained={quiz.length * 36} onRestart={() => { setQIdx(0); setScreen('quiz'); }} theme={theme} ink={ink} muted={muted} line={line} />;
+  } else {
+    main = (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 0, height: '100%' }}>
+        {/* LEFT: question */}
+        <div style={{ padding: `${pad}px ${pad}px 0`, overflow: 'auto', borderRight: `1px solid ${line}` }}>
+          {/* topic pill + progress */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <div style={{
+              padding: '5px 11px', borderRadius: 6, background: theme.accentSoft, color: theme.accent,
+              fontSize: 10, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, letterSpacing: 1.4,
+            }}>
+              {q.topic.toUpperCase()} · {q.difficulty}
+            </div>
+            <div style={{ flex: 1, height: 3, background: line, borderRadius: 2, overflow: 'hidden', maxWidth: 240 }}>
+              <div style={{ width: `${((qIdx + 1) / quiz.length) * 100}%`, height: '100%', background: theme.accent, transition: 'width 0.3s' }} />
+            </div>
+            <div style={{ fontSize: 11, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600 }}>
+              {qIdx + 1} / {quiz.length}
+            </div>
+          </div>
+
+          {/* prompt */}
+          <div style={{ fontSize: 24, fontWeight: 600, color: ink, letterSpacing: -0.5, lineHeight: 1.25, marginBottom: 20, textWrap: 'pretty' }}>
+            {q.prompt}
+          </div>
+
+          {/* body */}
+          <DesktopQuestionBody
+            q={q} selected={selected} setSelected={setSelected}
+            submitted={submitted} theme={theme} ink={ink} muted={muted} line={line}
+            dragArrow={dragArrow} setDragArrow={setDragArrow}
+          />
+
+          {/* submit footer */}
+          <div style={{ marginTop: 28, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button
+              onClick={submit}
+              disabled={submitted || (q.type === 'arrow' ? !dragArrow : selected == null)}
+              style={{
+                padding: '12px 28px', borderRadius: 10, border: 'none',
+                background: (q.type === 'arrow' ? dragArrow : selected != null) && !submitted ? ink : line,
+                color: (q.type === 'arrow' ? dragArrow : selected != null) && !submitted ? bg : muted,
+                fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Check Answer
+            </button>
+            <div style={{ fontSize: 11, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>
+              {q.type === 'arrow' ? 'DRAG FROM SOURCE TO TARGET' : q.type === 'nmr' ? 'CLICK A PEAK' : 'PRESS 1–4 · ENTER TO SUBMIT'}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: context / explanation */}
+        <div style={{ padding: `${pad}px ${pad}px 0`, overflow: 'auto', background: '#F6F5F0' }}>
+          {!submitted ? (
+            <>
+              <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 12 }}>
+                REFERENCE · NO PEEKING
+              </div>
+              <div style={{ padding: 18, background: '#fff', border: `1px solid ${line}`, borderRadius: 14 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: ink, letterSpacing: -0.2 }}>
+                  {q.topic}
+                </div>
+                <div style={{ fontSize: 12, color: muted, marginTop: 10, lineHeight: 1.5 }}>
+                  The explanation panel reveals after you submit. Commit to an answer first — that's where the learning compounds.
+                </div>
+              </div>
+              <div style={{ marginTop: 20, padding: 18, background: '#fff', border: `1px solid ${line}`, borderRadius: 14 }}>
+                <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 10 }}>
+                  SHORTCUTS
+                </div>
+                {[
+                  ['1 – 4', 'Select answer'],
+                  ['⏎', 'Submit'],
+                  ['⌘ K', 'Command palette'],
+                  ['→', 'Next question'],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
+                    <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, color: ink, background: line, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{k}</kbd>
+                    <span style={{ color: muted }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <ExplanationPanel q={q} correct={wasCorrect} onNext={next} theme={theme} ink={ink} muted={muted} line={line} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Sidebar wrapper - uses the same pattern as MacSidebar but inline
+  const sidebarPanel = (
+    <div style={{
+      width: 260, flexShrink: 0, height: '100%',
+      background: theme.dark ? 'rgba(30,32,38,0.85)' : 'rgba(240,238,228,0.8)',
+      backdropFilter: 'blur(30px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(30px) saturate(180%)',
+      borderRight: `1px solid ${line}`,
+      display: 'flex', flexDirection: 'column',
+      overflow: 'auto',
+    }}>
+      {sidebar}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', width: '100%', height: '100%', position: 'relative' }}>
+      {sidebarPanel}
+      <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {main}
+      </div>
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} theme={theme} themes={themes} themeKey={themeKey} setThemeKey={setThemeKey} density={density} setDensity={setDensity} />}
+    </div>
+  );
+}
+
+// ═══ Question body — desktop-size rendering ═════════════════════════════
+function DesktopQuestionBody({ q, selected, setSelected, submitted, theme, ink, muted, line, dragArrow, setDragArrow }) {
+  // Render the structure canvas at desktop size
+  const canvasBg = '#fff';
+  if (q.type === 'arrow') {
+    return <DragArrowCanvas q={q} submitted={submitted} theme={theme} ink={ink} muted={muted} line={line} dragArrow={dragArrow} setDragArrow={setDragArrow} />;
+  }
+  if (q.type === 'nmr') {
+    return (
+      <div style={{ background: canvasBg, border: `1px solid ${line}`, borderRadius: 14, padding: 24 }}>
+        <div style={{ position: 'relative' }}>
+          <NMRSpectrum w={600} h={240} peaks={q.peaks} highlight={selected} />
+          <div style={{ position: 'absolute', inset: 0 }}>
+            {q.peaks.map((pk, i) => {
+              const pct = ((10 - pk.shift) / 10) * 100;
+              const isHi = selected === i;
+              const correct = submitted && i === q.correctPeak;
+              const wrong = submitted && isHi && i !== q.correctPeak;
+              return (
+                <button key={i}
+                  onClick={() => !submitted && setSelected(i)}
+                  style={{
+                    position: 'absolute', left: `calc(${pct}% - 26px)`, top: 0, bottom: 56,
+                    width: 52, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+                  }}>
+                  <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 6,
+                    border: isHi ? `2px solid ${correct ? '#16a34a' : wrong ? '#dc2626' : theme.accent}` : '2px dashed transparent',
+                    background: isHi ? (correct ? '#16a34a18' : wrong ? '#dc262618' : theme.accentSoft) : 'transparent',
+                  }} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // MC variants
+  return (
+    <div>
+      {q.reactant && <ReactantPreview q={q} line={line} ink={ink} muted={muted} />}
+      <div style={{ display: 'grid', gap: 10 }}>
+        {q.options.map((opt, i) => {
+          const letter = String.fromCharCode(65 + i);
+          const isSel = selected === i;
+          const ok = submitted && opt.correct;
+          const bad = submitted && isSel && !opt.correct;
+          let borderColor = line, bgColor = '#fff';
+          if (ok) { borderColor = '#16a34a'; bgColor = '#16a34a0f'; }
+          else if (bad) { borderColor = '#dc2626'; bgColor = '#dc26260f'; }
+          else if (isSel) { borderColor = ink; }
+          return (
+            <button key={i} onClick={() => !submitted && setSelected(i)}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 14,
+                padding: '14px 16px', background: bgColor,
+                border: `1.5px solid ${borderColor}`, borderRadius: 12,
+                cursor: submitted ? 'default' : 'pointer', textAlign: 'left',
+                fontFamily: 'inherit', color: ink, width: '100%',
+                transition: 'all 0.12s',
+              }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                border: `1.5px solid ${isSel || ok ? ink : line}`,
+                background: isSel || ok ? ink : 'transparent', color: '#FAFAF7',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace',
+              }}>{letter}</div>
+              <div style={{ flex: 1, paddingTop: 3 }}>
+                <div style={{ fontSize: 15, letterSpacing: -0.2, lineHeight: 1.4 }}>{opt.label}</div>
+                {opt.detail && <div style={{ fontSize: 12, color: muted, marginTop: 3, fontFamily: '"JetBrains Mono", ui-monospace' }}>{opt.detail}</div>}
+              </div>
+              <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, color: muted, background: line, padding: '3px 8px', borderRadius: 4, fontSize: 10, marginTop: 3 }}>{i + 1}</kbd>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ReactantPreview({ q, line, ink, muted }) {
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${line}`, borderRadius: 14, padding: 24, marginBottom: 20 }}>
+      <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 14 }}>
+        REACTION
+      </div>
+      <svg width="100%" height="130" viewBox="0 0 520 130">
+        {q.reactant === 'EthylAcetate' && (
+          <>
+            <g transform="translate(40,50) scale(1.6)"><EthylAcetate x={0} y={0} /></g>
+            {q.reagents && <g transform="translate(260,70) scale(1.3)"><RxnArrow x={0} y={0} w={80} above={q.reagents} below={q.conditions} /></g>}
+            <g transform="translate(410,55) scale(1.4)">
+              <rect x={0} y={0} width={80} height={34} rx={6} fill="none" stroke="var(--mol-muted)" strokeDasharray="3 3" />
+              <text x={40} y={22} textAnchor="middle" style={{ font: '600 14px "JetBrains Mono", ui-monospace' }} fill="var(--mol-muted)">?</text>
+            </g>
+          </>
+        )}
+        {q.reactant === 'AcetylChloride' && (
+          <>
+            <g transform="translate(60,50) scale(1.8)"><AcetylChloride x={0} y={0} /></g>
+            <g transform="translate(220,70) scale(1.3)"><RxnArrow x={0} y={0} w={90} above="MeOH" below="0 °C" /></g>
+            <g transform="translate(400,55) scale(1.4)">
+              <rect x={0} y={0} width={80} height={34} rx={6} fill="none" stroke="var(--mol-muted)" strokeDasharray="3 3" />
+              <text x={40} y={22} textAnchor="middle" style={{ font: '600 14px "JetBrains Mono", ui-monospace' }} fill="var(--mol-muted)">?</text>
+            </g>
+          </>
+        )}
+        {q.reactant === 'MethylBenzoate' && (
+          <g transform="translate(180,10) scale(1.8)"><MethylBenzoate x={30} y={40} /></g>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+function DragArrowCanvas({ q, submitted, theme, ink, muted, line, dragArrow, setDragArrow }) {
+  const svgRef = React.useRef(null);
+  const [drag, setDrag] = React.useState(null); // { from: [x,y], to: [x,y] }
+
+  const getPt = (e) => {
+    const svg = svgRef.current;
+    const rect = svg.getBoundingClientRect();
+    const vbW = 600, vbH = 260;
+    const x = ((e.clientX - rect.left) / rect.width) * vbW;
+    const y = ((e.clientY - rect.top) / rect.height) * vbH;
+    return [x, y];
+  };
+
+  const onDown = (e) => {
+    if (submitted) return;
+    const p = getPt(e);
+    setDrag({ from: p, to: p });
+  };
+  const onMove = (e) => {
+    if (!drag || submitted) return;
+    setDrag(d => ({ ...d, to: getPt(e) }));
+  };
+  const onUp = () => {
+    if (!drag || submitted) return;
+    // find closest choice by comparing start to each choice.from and end to choice.to
+    const dist2 = (a, b) => (a[0]-b[0])**2 + (a[1]-b[1])**2;
+    const scaled = q.arrowChoices.map(c => ({
+      ...c,
+      // scale choice coords from 300x120 into 600x260
+      scFrom: [c.from[0] * 2, c.from[1] * 2.17],
+      scTo: [c.to[0] * 2, c.to[1] * 2.17],
+    }));
+    const best = scaled.map(c => ({
+      c,
+      score: dist2(drag.from, c.scFrom) + dist2(drag.to, c.scTo),
+    })).sort((a, b) => a.score - b.score)[0];
+    setDragArrow({ from: drag.from, to: drag.to, correctChoice: best.c.correct, matchedId: best.c.id });
+    setDrag(null);
+  };
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${line}`, borderRadius: 14, padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+        <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700 }}>
+          STEP 1 · FISCHER ESTERIFICATION
+        </div>
+        <div style={{ fontSize: 11, color: theme.accent, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600 }}>
+          DRAG FROM ELECTRON SOURCE TO TARGET
+        </div>
+      </div>
+      <svg
+        ref={svgRef}
+        width="100%" height="260" viewBox="0 0 600 260"
+        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+        style={{ cursor: submitted ? 'default' : 'crosshair', userSelect: 'none' }}
+      >
+        {/* propanoic acid, scaled up */}
+        <g transform="translate(80,100) scale(2.2)"><PropanoicAcid x={0} y={0} /></g>
+        {/* H+ */}
+        <text x={420} y={100} fill={ink} style={{ font: '700 20px "JetBrains Mono", ui-monospace' }}>H</text>
+        <circle cx={444} cy={92} r={10} fill="none" stroke={theme.accent} strokeWidth={1.5} />
+        <text x={444} y={97} textAnchor="middle" style={{ font: '700 12px system-ui' }} fill={theme.accent}>+</text>
+        {/* live drag preview */}
+        {drag && (() => {
+          const mid = [(drag.from[0]+drag.to[0])/2, Math.min(drag.from[1], drag.to[1]) - 30];
+          return <CurvedArrow from={drag.from} to={drag.to} ctrl={mid} color={theme.accent} active />;
+        })()}
+        {/* committed arrow */}
+        {dragArrow && (() => {
+          const mid = [(dragArrow.from[0]+dragArrow.to[0])/2, Math.min(dragArrow.from[1], dragArrow.to[1]) - 30];
+          const color = submitted
+            ? (dragArrow.correctChoice ? '#16a34a' : '#dc2626')
+            : theme.accent;
+          return <CurvedArrow from={dragArrow.from} to={dragArrow.to} ctrl={mid} color={color} active />;
+        })()}
+      </svg>
+      {dragArrow && !submitted && (
+        <div style={{ marginTop: 10, fontSize: 12, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>
+          ARROW DRAWN. CLICK TO REDO OR CHECK ANSWER.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ Explanation panel ═════════════════════════════════════════════════
+function ExplanationPanel({ q, correct, onNext, theme, ink, muted, line }) {
+  const resultColor = correct ? '#16a34a' : '#dc2626';
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 20, background: resultColor,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', fontSize: 20, fontWeight: 700,
+        }}>
+          {correct ? '✓' : '✕'}
+        </div>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.4, color: resultColor, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700 }}>
+            {correct ? 'CORRECT' : 'INCORRECT'}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: ink, letterSpacing: -0.3, marginTop: 2 }}>
+            {correct ? 'Nice mechanism.' : 'Review this.'}
+          </div>
+        </div>
+      </div>
+
+      {correct && (
+        <div style={{ display: 'flex', gap: 14, marginBottom: 18, fontSize: 11, fontFamily: '"JetBrains Mono", ui-monospace' }}>
+          <div style={{ padding: '6px 10px', background: '#fff', border: `1px solid ${line}`, borderRadius: 6 }}>
+            <span style={{ color: muted }}>XP </span><span style={{ color: theme.accent, fontWeight: 700 }}>+36</span>
+          </div>
+          <div style={{ padding: '6px 10px', background: '#fff', border: `1px solid ${line}`, borderRadius: 6 }}>
+            <span style={{ color: muted }}>STREAK </span><span style={{ color: ink, fontWeight: 700 }}>+1</span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: 18, background: '#fff', border: `1px solid ${line}`, borderRadius: 14 }}>
+        <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 10 }}>
+          WHY
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.55, color: ink, letterSpacing: -0.1, textWrap: 'pretty' }}>
+          {q.explanation}
+        </div>
+      </div>
+
+      {!correct && q.options && (
+        <div style={{ marginTop: 14, padding: 14, background: '#16a34a0f', border: '1px solid #16a34a40', borderRadius: 12 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.4, color: '#15803d', fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700 }}>
+            CORRECT ANSWER
+          </div>
+          <div style={{ fontSize: 14, color: ink, marginTop: 4, letterSpacing: -0.1 }}>
+            {q.options.find(o => o.correct)?.label}
+          </div>
+        </div>
+      )}
+
+      <button onClick={onNext}
+        style={{
+          marginTop: 20, width: '100%', padding: '14px', borderRadius: 10, border: 'none',
+          background: ink, color: '#FAFAF7', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+        }}>
+        Next Question
+        <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, background: 'rgba(255,255,255,0.15)', padding: '2px 7px', borderRadius: 4, fontSize: 11 }}>→</kbd>
+      </button>
+    </div>
+  );
+}
+
+// ═══ Session complete ═════════════════════════════════════════════════
+function SessionComplete({ streak, xpGained, onRestart, theme, ink, muted, line }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 40 }}>
+      <div style={{ maxWidth: 460, textAlign: 'center' }}>
+        <div style={{ fontSize: 10, letterSpacing: 1.6, color: theme.accent, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 14 }}>
+          QUIZ COMPLETE
+        </div>
+        <div style={{ fontSize: 48, fontWeight: 700, color: ink, letterSpacing: -1.2, lineHeight: 1.05 }}>
+          Clean reaction, Connor.
+        </div>
+        <div style={{ marginTop: 30, padding: 24, background: '#fff', border: `1px solid ${line}`, borderRadius: 16, display: 'flex', justifyContent: 'space-around' }}>
+          <div>
+            <div style={{ fontSize: 36, fontWeight: 700, color: theme.accent, letterSpacing: -0.8 }}>+{xpGained}</div>
+            <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600, marginTop: 2 }}>XP EARNED</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 36, fontWeight: 700, color: ink, letterSpacing: -0.8 }}>{streak}</div>
+            <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600, marginTop: 2 }}>DAY STREAK</div>
+          </div>
+        </div>
+        <button onClick={onRestart}
+          style={{
+            marginTop: 24, padding: '12px 28px', borderRadius: 10, border: 'none',
+            background: ink, color: '#FAFAF7', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+          Another round →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══ Command palette ══════════════════════════════════════════════════
+function CommandPalette({ onClose, theme, themes, themeKey, setThemeKey, density, setDensity }) {
+  const ink = '#0E0E0C', muted = 'rgba(14,14,12,0.55)', line = 'rgba(14,14,12,0.08)';
+  const items = [
+    ...Object.entries(themes).map(([k, t]) => ({
+      label: `Theme: ${t.name}`,
+      kbd: themeKey === k ? '●' : '',
+      action: () => { setThemeKey(k); onClose(); },
+    })),
+    { label: `Density: ${density === 'comfy' ? 'Switch to compact' : 'Switch to comfy'}`, action: () => { setDensity(d => d === 'comfy' ? 'compact' : 'comfy'); onClose(); } },
+    { label: 'Jump to topic: Arrow Pushing', action: onClose },
+    { label: 'Jump to topic: Retrosynthesis', action: onClose },
+    { label: 'Start Daily Challenge', action: onClose },
+    { label: 'Open Study Mode', action: onClose },
+  ];
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      paddingTop: 140, zIndex: 200, backdropFilter: 'blur(4px)',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: 560, background: '#fff', borderRadius: 14,
+        boxShadow: '0 30px 80px rgba(0,0,0,0.25)', overflow: 'hidden',
+      }}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.5" stroke={muted} strokeWidth="1.5" fill="none"/><path d="M9.5 9.5L13 13" stroke={muted} strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <div style={{ fontSize: 14, color: muted }}>Type a command…</div>
+          <div style={{ flex: 1 }} />
+          <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, color: muted, background: line, padding: '3px 8px', borderRadius: 4, fontSize: 10 }}>ESC</kbd>
+        </div>
+        {items.map((it, i) => (
+          <div key={i} onClick={it.action}
+            style={{
+              padding: '12px 18px', fontSize: 13, color: ink, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: i < items.length - 1 ? `1px solid ${line}` : 'none',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = theme.accentSoft}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            {it.label}
+            {it.kbd && <span style={{ color: theme.accent, fontWeight: 700 }}>{it.kbd}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { ChemLab });
+
+
+// ═══ app/DesktopRoot.jsx ═══
+const TWEAK_DEFAULS = /*EDITMODE-BEGIN*/{
+  "theme": "lab",
+  "density": "compact"
+}/*EDITMODE-END*/;
+
+const THEMES = {
+  lab:  { name: 'Lab Green', accent: '#1F7A4D', accentSoft: '#1F7A4D14', dark: false },
+  chem: { name: 'Chem Blue', accent: '#2356C6', accentSoft: '#2356C614', dark: false },
+  dark: { name: 'Fume Hood', accent: '#4ADE80', accentSoft: '#4ADE8020', dark: true  },
+};
+
+function applyThemeVars(theme) {
+  const root = document.documentElement;
+  root.style.setProperty('--mol-ink', theme.dark ? '#F5F5F2' : '#0E0E0C');
+  root.style.setProperty('--mol-bg',  theme.dark ? '#16160F' : '#FFFFFF');
+  root.style.setProperty('--mol-muted', theme.dark ? 'rgba(245,245,242,0.5)' : 'rgba(14,14,12,0.5)');
+  root.style.setProperty('--mol-accent', theme.accent);
+  root.style.setProperty('--accent', theme.accent);
+  if (theme.dark) {
+    document.body.style.backgroundImage =
+      'radial-gradient(1000px 700px at 20% 15%, #2a2e38 0%, transparent 55%),' +
+      'radial-gradient(1000px 700px at 85% 70%, #1f2d33 0%, transparent 55%),' +
+      'linear-gradient(135deg, #16181f 0%, #0d1014 100%)';
+  } else {
+    document.body.style.backgroundImage = '';
+  }
+}
+
+function CustomMacWindow({ width, height, title, children, dark }) {
+  return (
+    <div style={{
+      width, height, borderRadius: 14, overflow: 'hidden',
+      background: dark ? '#16160F' : '#FFFFFF',
+      boxShadow: '0 0 0 1px rgba(0,0,0,0.2), 0 30px 80px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.15)',
+      display: 'flex', flexDirection: 'column', position: 'relative',
+    }}>
+      <div style={{
+        height: 38, flexShrink: 0, display: 'flex', alignItems: 'center',
+        padding: '0 14px', gap: 10,
+        background: dark ? 'rgba(32,34,40,0.92)' : 'rgba(245,245,240,0.92)',
+        borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+        position: 'relative', zIndex: 5,
+      }}>
+        <MacTrafficLights />
+        <div style={{
+          flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600,
+          color: dark ? 'rgba(245,245,242,0.85)' : '#0E0E0C', letterSpacing: -0.1,
+        }}>{title}</div>
+        <div style={{ width: 52 }} />
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', overflow: 'hidden' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Root() {
+  const [themeKey, setThemeKey] = React.useState(TWEAK_DEFAULS.theme);
+  const [density, setDensity] = React.useState(TWEAK_DEFAULS.density);
+  const theme = { ...THEMES[themeKey], key: themeKey };
+  React.useEffect(() => { applyThemeVars(theme); }, [themeKey]);
+
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const changeTheme = (k) => {
+    setThemeKey(k);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { theme: k } }, '*');
+  };
+  const changeDensity = (d) => {
+    setDensity(d);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { density: d } }, '*');
+  };
+
+  const W = 1560, H = 970;
+
+  return (
+    <div style={{
+      minHeight: '100vh', width: '100%',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '40px 20px',
+    }} data-screen-label="01 ChemLab">
+      <div className="stage-caption" style={{ color: theme.dark ? 'rgba(255,255,255,0.7)' : undefined }}>
+        RETRON · CHEMLAB FOR MACBOOK PRO 16"
+        <span className="sub" style={{ color: theme.dark ? 'rgba(255,255,255,0.4)' : undefined }}>
+          FOR CONNOR · RUTGERS ORGO II · ACS PREP · ⌘K FOR COMMAND PALETTE
+        </span>
+      </div>
+
+      <CustomMacWindow width={W} height={H} dark={theme.dark}
+        title="ChemLab — Daily Challenge · 04.20.26">
+        <ChemLab theme={theme} themeKey={themeKey} setThemeKey={changeTheme}
+          themes={THEMES} density={density} setDensity={changeDensity} />
+      </CustomMacWindow>
+
+      {tweaksOpen && (
+        <div className="tweaks">
+          <h4>Color theme</h4>
+          <div className="theme-row">
+            {Object.entries(THEMES).map(([k, t]) => (
+              <div key={k}
+                className="swatch"
+                style={{
+                  background: t.dark ? '#0A0A09' : '#FAFAF7',
+                  color: t.accent,
+                  border: '2px solid ' + (themeKey === k ? '#0E0E0C' : 'rgba(0,0,0,0.1)'),
+                  transform: themeKey === k ? 'scale(1.04)' : 'scale(1)',
+                }}
+                onClick={() => changeTheme(k)}
+              >{t.name.split(' ')[0].toUpperCase()}</div>
+            ))}
+          </div>
+          <h4 style={{ marginTop: 14 }}>Density</h4>
+          <div className="density-row">
+            {['comfy', 'compact'].map(d => (
+              <button key={d}
+                className={'density-btn' + (density === d ? ' active' : '')}
+                onClick={() => changeDensity(d)}
+              >{d.toUpperCase()}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#1F7A4D"/>
+  <g transform="translate(50 52)" fill="none" stroke="#FAFAF7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="-18,10 0,0 18,10 18,-10 0,-20 -18,-10" />
+    <line x1="0" y1="0" x2="0" y2="-20" />
+    <line x1="-18" y1="10" x2="-18" y2="-10" />
+    <line x1="18" y1="10" x2="18" y2="-10" />
+  </g>
+</svg>
+</template>
+</body>
+</html>
