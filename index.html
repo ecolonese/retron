@@ -1648,34 +1648,11 @@ function useRetronData() {
   return { data, update, replace, saved, ref };
 }
 
-// ── window chrome (original look, now fluid) ──
-function CustomMacWindow({ title, children, dark, style }) {
+// ── app frame: fills the browser, no fake window chrome ──
+function AppFrame({ children, style }) {
   return (
-    <div style={{
-      borderRadius: 14, overflow: 'hidden',
-      background: dark ? '#16160F' : '#FFFFFF',
-      boxShadow: '0 0 0 1px rgba(0,0,0,0.2), 0 30px 80px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.15)',
-      display: 'flex', flexDirection: 'column', position: 'relative', ...style,
-    }}>
-      <div style={{
-        height: 38, flexShrink: 0, display: 'flex', alignItems: 'center',
-        padding: '0 14px', gap: 10,
-        background: dark ? 'rgba(32,34,40,0.92)' : 'rgba(245,245,240,0.92)',
-        borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        position: 'relative', zIndex: 5,
-      }}>
-        <MacTrafficLights />
-        <div style={{
-          flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600,
-          color: dark ? 'rgba(245,245,242,0.85)' : '#0E0E0C', letterSpacing: -0.1,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{title}</div>
-        <div style={{ width: 52 }} />
-      </div>
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', overflow: 'hidden' }}>
-        {children}
-      </div>
+    <div style={{ display: 'flex', position: 'relative', overflow: 'hidden', width: '100%', ...style }}>
+      {children}
     </div>
   );
 }
@@ -2648,10 +2625,10 @@ function RetronApp({ theme, themeKey, setThemeKey, density, setDensity, store })
 
   const titles = { home: 'Today', progress: 'Progress', backup: 'Backup', summary: 'Session complete',
     session: data.active ? MODES[data.active.mode].name : 'Session' };
+  React.useEffect(() => { document.title = `Retron \u00b7 ${titles[screen]}`; }, [screen, data.active && data.active.mode]);
 
   return (
-    <CustomMacWindow dark={theme.dark} title={`Retron · ${titles[screen]}`}
-      style={{ width: 'min(1560px, 100%)', height: bp === 'sm' ? 'calc(100vh - 70px)' : 'clamp(620px, calc(100vh - 150px), 970px)', minHeight: 560 }}>
+    <AppFrame style={{ height: '100vh', minHeight: 520 }}>
       <div style={{ display: 'flex', width: '100%', height: '100%', position: 'relative', flexDirection: bp === 'sm' ? 'column' : 'row' }}>
         {bp === 'sm'
           ? <TopNav t={t} theme={theme} screen={screen} go={go} />
@@ -2666,7 +2643,7 @@ function RetronApp({ theme, themeKey, setThemeKey, density, setDensity, store })
         </div>
         {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} t={t} theme={theme} items={items} />}
       </div>
-    </CustomMacWindow>
+    </AppFrame>
   );
 }
 
@@ -2678,7 +2655,6 @@ function Root() {
   const density = data.prefs.density || TWEAK_DEFAULS.density;
   const theme = { ...THEMES[themeKey], key: themeKey };
   React.useEffect(() => { applyThemeVars(theme); }, [themeKey]);
-  React.useEffect(() => { document.title = 'Retron · Study Companion'; }, []);
 
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   React.useEffect(() => {
@@ -2700,18 +2676,8 @@ function Root() {
     try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { density: v } }, '*'); } catch (e) { /* standalone */ }
   };
 
-  const width = useWidth();
-  const small = width < 820;
   return (
-    <div style={{ minHeight: '100vh', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: small ? '10px 8px' : '40px 20px' }} data-screen-label="01 Retron">
-      {!small && (
-        <div className="stage-caption" style={{ color: theme.dark ? 'rgba(255,255,255,0.7)' : undefined }}>
-          RETRON · STUDY COMPANION
-          <span className="sub" style={{ color: theme.dark ? 'rgba(255,255,255,0.4)' : undefined }}>
-            FOR CONNOR · RUTGERS · SPRING 2027 · ⌘K FOR COMMANDS
-          </span>
-        </div>
-      )}
+    <div style={{ width: '100%' }} data-screen-label="01 Retron">
       <RetronApp theme={theme} themeKey={themeKey} setThemeKey={changeTheme} density={density} setDensity={changeDensity} store={store} />
 
       {tweaksOpen && (
