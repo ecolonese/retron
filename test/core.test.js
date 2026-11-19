@@ -49,7 +49,7 @@ t('every concept has at least one question; every subject has concepts', () => {
   SUBJECTS.forEach(s => assert(CONCEPTS.some(c => c.subject === s.id), s.id));
 });
 t('no em dashes in content', () => {
-  const src = fs.readFileSync(__dirname + '/../src/core.js', 'utf8');
+  const src = fs.readFileSync(__dirname + '/../index.html', 'utf8').match(/<script id="retron-core">([\s\S]*?)<\/script>/)[1];
   assert(!/—/.test(src), 'em dash found');
 });
 console.log('     counts:', SUBJECTS.map(s => s.id + '=' + QUESTIONS.filter(q => q.subject === s.id).length).join(' '));
