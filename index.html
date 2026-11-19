@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Retron Desktop · OrgChem Mastery</title>
+<title>Retron · Study Companion</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -62,6 +62,15 @@
     display: block; font-size: 10px; letter-spacing: 1.4px; margin-top: 4px;
     color: rgba(0,0,0,0.38); font-weight: 500;
   }
+
+  :focus-visible { outline: 2px solid var(--accent, #1F7A4D); outline-offset: 2px; }
+  button { transition: background .12s, border-color .12s, opacity .12s; }
+  button:not(:disabled):hover { opacity: .92; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  summary::after { content: "  +"; font-family: "JetBrains Mono", ui-monospace; opacity: .6; }
+  details[open] > summary::after { content: "  \2212"; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
 </head>
 <body>
@@ -70,6 +79,919 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script id="retron-core">
+// ═══ RETRON CORE: content + learning engine (plain JS, no build step) ═══
+//
+// HOW TO ADD A SUBJECT
+//   1. Add an entry to SUBJECTS (weight 0 = only shows when chosen directly).
+//   2. Add its concepts to CONCEPTS (area groups concepts on the Progress screen).
+//   3. Add questions with mc(...) at the bottom of the QUESTIONS section.
+// Nothing else needs to change. Home, sidebar, Progress and the scheduler
+// are all driven by these three lists.
+//
+// HOW QUESTIONS ARE VALIDATED
+//   Every wrong option carries a short "why" so feedback explains the miss.
+//   Content tests (test/core.test.js) check ids, concepts, and exactly one
+//   correct option per question. Review new content against course materials.
+(function () {
+  'use strict';
+
+  var STORE_KEY = 'retron.v2';
+
+  // ───────────────────────── Subjects ─────────────────────────
+  var SUBJECTS = [
+    { id: 'biochem', name: 'General Biochemistry', short: 'Biochemistry', code: '11:115:403', credits: 4, weight: 4, stage: 'core',
+      blurb: 'Amino acids, proteins, enzymes, metabolism, energetics' },
+    { id: 'micro', name: 'Food Microbiology', short: 'Food Microbiology', code: '11:400:423', credits: 3, weight: 2, stage: 'starter',
+      blurb: 'Growth factors, safety, bacterial basics' },
+    { id: 'hort', name: 'Introduction to Horticulture', short: 'Horticulture', code: '11:776:211', credits: 3, weight: 1, stage: 'starter',
+      blurb: 'Plant nutrition, soil, growth, propagation' },
+    { id: 'fruit', name: 'Fruit Production', short: 'Fruit Production', code: '11:776:341', credits: 3, weight: 1, stage: 'starter',
+      blurb: 'Orchard biology, pollination, sites, rootstocks' },
+    { id: 'orgo', name: 'Organic Chemistry Review', short: 'Organic Chem', code: null, credits: 0, weight: 0, stage: 'foundation',
+      blurb: 'Foundation review: carbonyl chemistry, mechanisms, spectroscopy' },
+  ];
+
+  // ───────────────────────── Concepts ─────────────────────────
+  function C(id, subject, area, name) { return { id: id, subject: subject, area: area, name: name }; }
+  var CONCEPTS = [
+    C('aa-structure', 'biochem', 'Amino acids', 'Structure and chirality'),
+    C('aa-classes', 'biochem', 'Amino acids', 'Side-chain properties'),
+    C('aa-ionization', 'biochem', 'Amino acids', 'Ionization and pI'),
+    C('aa-special', 'biochem', 'Amino acids', 'Cysteine and proline'),
+    C('peptide-bond', 'biochem', 'Protein structure', 'The peptide bond'),
+    C('sec-struct', 'biochem', 'Protein structure', 'Secondary structure'),
+    C('folding', 'biochem', 'Protein structure', 'Folding and denaturation'),
+    C('levels', 'biochem', 'Protein structure', 'Levels of structure'),
+    C('enz-catalysis', 'biochem', 'Enzymes', 'How enzymes catalyze'),
+    C('enz-kinetics', 'biochem', 'Enzymes', 'Michaelis-Menten kinetics'),
+    C('enz-inhibition', 'biochem', 'Enzymes', 'Inhibition'),
+    C('enz-regulation', 'biochem', 'Enzymes', 'Regulation'),
+    C('metab-overview', 'biochem', 'Metabolism fundamentals', 'Catabolism, anabolism, cofactors'),
+    C('glycolysis', 'biochem', 'Metabolism fundamentals', 'Glycolysis'),
+    C('tca-oxphos', 'biochem', 'Metabolism fundamentals', 'Citric acid cycle and ATP synthesis'),
+    C('gibbs', 'biochem', 'Biochemical energetics', 'Free energy (ΔG)'),
+    C('atp', 'biochem', 'Biochemical energetics', 'ATP and coupling'),
+    C('redox', 'biochem', 'Biochemical energetics', 'Redox potentials'),
+    C('org-hh', 'biochem', 'Organic chemistry review', 'Acid-base and Henderson-Hasselbalch'),
+    C('org-func', 'biochem', 'Organic chemistry review', 'Functional groups and nucleophiles'),
+
+    C('fm-growth', 'micro', 'Food microbiology basics', 'Growth factors in food'),
+    C('fm-cells', 'micro', 'Food microbiology basics', 'Bacterial cell structure'),
+    C('fm-safety', 'micro', 'Food microbiology basics', 'Pathogens and food safety'),
+
+    C('h-nutrition', 'hort', 'Horticulture basics', 'Plant nutrition and soil'),
+    C('h-growth', 'hort', 'Horticulture basics', 'Growth and propagation'),
+
+    C('fp-orchard', 'fruit', 'Fruit production basics', 'Orchard biology'),
+    C('fp-sites', 'fruit', 'Fruit production basics', 'Sites, soils, rootstocks'),
+
+    C('o-acyl', 'orgo', 'Foundation review', 'Carbonyl derivatives and mechanisms'),
+    C('o-arrow', 'orgo', 'Foundation review', 'Arrow pushing'),
+    C('o-synth', 'orgo', 'Foundation review', 'Synthesis and reagents'),
+    C('o-spec', 'orgo', 'Foundation review', 'Spectroscopy'),
+  ];
+
+  // ───────────────────────── Questions ─────────────────────────
+  // mc(id, concept, diff, prompt, correct, [[wrong, why], ...], explain, more)
+  // diff: 1 = foundation, 2 = core, 3 = challenge
+  var CONCEPT_SUBJECT = {};
+  CONCEPTS.forEach(function (c) { CONCEPT_SUBJECT[c.id] = c.subject; });
+
+  function mc(id, concept, diff, prompt, correct, wrongs, explain, more) {
+    var options = [{ label: correct, correct: true }];
+    wrongs.forEach(function (w) { options.push({ label: w[0], correct: false, why: w[1] }); });
+    return { id: id, subject: CONCEPT_SUBJECT[concept], concept: concept, type: 'mc', diff: diff,
+      prompt: prompt, options: options, explain: explain, more: more || null };
+  }
+
+  var QUESTIONS = [
+
+    // ══ General Biochemistry · Amino acids ══
+    mc('bc-aa-1', 'aa-structure', 1,
+      'Which feature do all 20 standard amino acids share?',
+      'A central α-carbon bonded to an amino group, a carboxyl group, a hydrogen, and a side chain (R)',
+      [['A chiral α-carbon', 'Glycine’s side chain is just H, so its α-carbon holds two identical hydrogens and is not chiral.'],
+       ['A side chain that is charged at pH 7.4', 'Only Asp, Glu, Lys and Arg are clearly charged at neutral pH (His is partly). Most side chains are neutral.'],
+       ['An aromatic ring in the side chain', 'Only Phe, Tyr and Trp are aromatic (His has an aromatic imidazole ring).']],
+      'Every standard amino acid has the same backbone pattern: an α-carbon bonded to –NH₃⁺, –COO⁻, H, and a variable R group. The side chain is what makes each one different.',
+      'Proline bends the picture: its side chain loops back and bonds to the α-nitrogen, so its amine is secondary and sits inside a ring.'),
+
+    mc('bc-aa-2', 'aa-structure', 1,
+      'Proteins are built from which stereoisomers of the amino acids?',
+      'L-amino acids (S at the α-carbon for all except cysteine, which is R)',
+      [['D-amino acids', 'D-amino acids do occur (bacterial cell walls, some peptide antibiotics) but ribosomes do not put them into proteins.'],
+       ['An equal mix of D and L forms', 'Ribosomal synthesis uses only one enantiomer, so proteins are stereochemically uniform.'],
+       ['R-configured amino acids exclusively', 'Most L-amino acids are S. Cysteine is R only because its sulfur changes the CIP priority order, not its 3-D arrangement.']],
+      'Ribosomes use only L-amino acids. Most are (S) at the α-carbon. Cysteine is (R) because sulfur changes the CIP priorities, even though its 3-D layout matches the others.'),
+
+    mc('bc-aa-3', 'aa-special', 1,
+      'Which amino acid side chain can form a disulfide bond?',
+      'Cysteine',
+      [['Methionine', 'Its sulfur is a thioether (–S–CH₃) with no –SH to oxidize, so it cannot form a disulfide.'],
+       ['Serine', 'Its –OH can hydrogen bond or be phosphorylated, but it has no thiol to couple.'],
+       ['Tyrosine', 'It has a phenolic –OH on an aromatic ring. No thiol, so no disulfide.']],
+      'Two cysteine thiols (–SH) can be oxidized into a covalent disulfide (–S–S–). Many extracellular proteins are cross-linked this way.'),
+
+    mc('bc-aa-4', 'aa-classes', 1,
+      'In a soluble globular protein, which side chains are most often buried in the interior, away from water?',
+      'Nonpolar residues such as Leu, Ile, Val and Phe',
+      [['Charged residues such as Asp, Glu, Lys and Arg', 'Charged groups usually sit on the surface where water can solvate them. Burying a charge without a partner is costly.'],
+       ['Polar uncharged residues such as Ser, Thr, Asn and Gln', 'They usually sit on the surface or in hydrogen-bond networks. They are not the main core residues.'],
+       ['Glycine and proline only', 'Both matter for backbone flexibility and turns. Neither defines which side chains are buried.']],
+      'The hydrophobic effect pushes nonpolar side chains into the core, while polar and charged side chains stay on the surface where water can interact with them.'),
+
+    mc('bc-aa-5', 'aa-ionization', 2,
+      'An amino acid has pKa values of 2.3 (α-COOH) and 9.7 (α-NH₃⁺) and a non-ionizable side chain. What is its pI?',
+      '6.0',
+      [['2.3', 'That is only the carboxyl pKa. At pH 2.3 the molecule is still half protonated, so the net charge is not zero.'],
+       ['9.7', 'That is only the amino pKa.'],
+       ['7.0', 'The pI is not tied to neutral pH. Here it is the average of the two pKa values on either side of the neutral zwitterion.']],
+      'The pI is the pH of net zero charge. With no ionizable side chain it is the average of the two pKa values: (2.3 + 9.7) / 2 = 6.0.',
+      'With an ionizable side chain, average the two pKa values that flank the neutral form. For a basic residue those are the α-NH₃⁺ and the side chain. For an acidic residue they are the α-COOH and the side chain.'),
+
+    mc('bc-aa-6', 'aa-ionization', 2,
+      'At pH 7.4, which side chain is mostly protonated and carries a positive charge?',
+      'Lysine (side-chain pKa about 10.5)',
+      [['Histidine (pKa about 6)', 'At 7.4 it is mostly deprotonated and neutral. A pKa near neutral pH is exactly why His works as a proton shuttle in active sites.'],
+       ['Aspartate (pKa about 4)', 'Its side-chain carboxyl is deprotonated at 7.4, so it is negative.'],
+       ['Tyrosine (pKa about 10)', 'Its –OH is mostly protonated but neutral. Protonation only makes a group positive when it is an amine or imidazole.']],
+      'A group is mostly protonated when pH < pKa. Lysine’s ε-amino group (pKa about 10.5) stays as –NH₃⁺ well above pH 7.4, so it is positively charged.'),
+
+    mc('bc-aa-7', 'aa-special', 2,
+      'Why does proline disrupt α-helices?',
+      'Its ring ties the side chain to the backbone nitrogen, which removes the N–H needed for helix hydrogen bonding and restricts rotation',
+      [['Its side chain is charged and repels nearby residues', 'Proline’s side chain is a neutral, nonpolar ring.'],
+       ['It forms disulfide bonds that lock the chain', 'Disulfides need cysteine thiols, not proline.'],
+       ['It is a D-amino acid', 'Proline is an L-amino acid like the others.']],
+      'Proline’s nitrogen has no hydrogen to donate to the helix hydrogen-bond pattern, and its ring locks the φ angle. Both effects break or kink helices.'),
+
+    // ══ General Biochemistry · Protein structure ══
+    mc('bc-ps-1', 'peptide-bond', 1,
+      'Which statement about the peptide bond is correct?',
+      'It has partial double-bond character from resonance, so it is planar and rotation about the C–N bond is restricted',
+      [['It is a simple single bond that rotates freely', 'Resonance between the carbonyl and the nitrogen lone pair gives the C–N bond partial double-bond character, so it does not rotate freely.'],
+       ['It forms in a hydrolysis reaction that consumes water', 'Forming a peptide bond is a condensation that releases water. Hydrolysis is the reverse and breaks the bond.'],
+       ['It is an ester linkage between one residue’s carboxyl and the next residue’s side chain', 'A peptide bond is an amide, joining the α-carboxyl of one residue to the α-amino group of the next.']],
+      'Resonance delocalizes the nitrogen lone pair into the carbonyl, so the atoms around the bond lie in one plane. Backbone flexibility comes from the φ and ψ angles instead.'),
+
+    mc('bc-ps-2', 'levels', 1,
+      'Hemoglobin contains four polypeptide chains. Which level of structure describes how these chains assemble?',
+      'Quaternary structure',
+      [['Primary structure', 'Primary structure is the amino acid sequence of a single chain.'],
+       ['Secondary structure', 'Secondary structure is local backbone folding such as α-helices and β-sheets.'],
+       ['Tertiary structure', 'Tertiary structure is the 3-D fold of one chain. Packing of several chains together is quaternary.']],
+      'Quaternary structure describes how separate polypeptide subunits are arranged and held together, as in hemoglobin’s four chains.'),
+
+    mc('bc-ps-3', 'sec-struct', 1,
+      'What mainly stabilizes an α-helix?',
+      'Backbone hydrogen bonds between the C=O of residue i and the N–H of residue i+4',
+      [['Disulfide bonds between adjacent turns', 'Helices are held by noncovalent backbone hydrogen bonds, not disulfides.'],
+       ['Hydrogen bonds between the side chains of neighboring residues', 'The helix hydrogen bonds involve the backbone, which is why helices can form from many different sequences.'],
+       ['Hydrogen bonds between separate strands lying side by side', 'That pattern describes a β-sheet.']],
+      'Each carbonyl oxygen hydrogen bonds to the amide N–H four residues ahead, giving a right-handed helix with 3.6 residues per turn.'),
+
+    mc('bc-ps-4', 'sec-struct', 2,
+      'Which statement about β-sheets is correct?',
+      'Strands can run parallel or antiparallel, with backbone hydrogen bonds between neighboring strands',
+      [['Strands must all run in the same direction', 'Both parallel and antiparallel arrangements are common.'],
+       ['Strands are joined by covalent bonds', 'β-sheets are held together by noncovalent backbone hydrogen bonds.'],
+       ['The hydrogen bonds involve side chains rather than the backbone', 'The hydrogen bonds are between backbone C=O and N–H groups. Side chains point above and below the sheet.']],
+      'In a β-sheet, extended strands pair side by side. Backbone C=O and N–H groups on neighboring strands hydrogen bond, and side chains alternate above and below the plane of the sheet.'),
+
+    mc('bc-ps-5', 'folding', 2,
+      'Which force is typically the main driver of folding for a soluble globular protein?',
+      'The hydrophobic effect, which buries nonpolar side chains away from water',
+      [['Covalent disulfide bonds', 'Disulfides can stabilize a fold, mainly in extracellular proteins, but they are not the main driver and many proteins have none.'],
+       ['Ionic bonds between all charged residues', 'Salt bridges contribute modestly and are weakened by water, so they are not the dominant force.'],
+       ['Peptide bond formation', 'Peptide bonds form the primary structure during translation. Folding happens afterward through noncovalent interactions.']],
+      'Burying nonpolar side chains frees ordered water and raises solvent entropy, which drives collapse into a compact core. Hydrogen bonds, van der Waals contacts and salt bridges then fine-tune the fold.'),
+
+    mc('bc-ps-6', 'folding', 1,
+      'Heating a protein solution makes the protein lose activity mainly because heat:',
+      'Disrupts noncovalent interactions and unfolds the native structure, leaving peptide bonds intact',
+      [['Hydrolyzes the peptide bonds', 'Ordinary heating does not break peptide bonds. That takes strong acid or base with prolonged heating.'],
+       ['Converts L-amino acids into D-amino acids', 'Heating does not convert L to D. The loss of activity is a loss of 3-D structure.'],
+       ['Adds new covalent cross-links that lock the structure', 'Some cross-linking can occur, but the main effect is unfolding of the native fold.']],
+      'Denaturation unfolds a protein by disrupting hydrogen bonds, hydrophobic packing and other weak interactions. The sequence is unchanged, which is why some proteins can refold.'),
+
+    mc('bc-ps-7', 'folding', 2,
+      'In Anfinsen’s ribonuclease experiment, RNase was denatured and reduced with urea and β-mercaptoethanol, then both were removed. What did the result show?',
+      'Active enzyme re-formed, so the amino acid sequence holds the information for the native fold',
+      [['Folding always requires a chaperone', 'The purified RNase refolded in a test tube with no chaperones. Chaperones help many proteins in cells, but they are not always required.'],
+       ['Disulfide bonds pair randomly, so activity cannot be recovered', 'Activity was largely recovered, which showed the native disulfide pairing could re-form.'],
+       ['Urea cleaves the peptide bonds', 'Urea disrupts noncovalent interactions and β-mercaptoethanol reduces disulfides. Peptide bonds stay intact.']],
+      'The enzyme refolded spontaneously to its active form, so the primary sequence specifies the 3-D structure.',
+      'When the disulfides were re-formed while urea was still present, they paired randomly and the enzyme was inactive. Removing urea first let the native pairing form.'),
+
+    // ══ General Biochemistry · Enzymes ══
+    mc('bc-en-1', 'enz-catalysis', 1,
+      'How does an enzyme speed up a reaction?',
+      'It lowers the activation energy by stabilizing the transition state',
+      [['It shifts the equilibrium toward the products', 'Enzymes speed up the forward and reverse reactions equally. They do not change ΔG or K_eq.'],
+       ['It makes the ΔG of the reaction more negative', 'ΔG is set by the energies of reactants and products, which the enzyme does not change.'],
+       ['It is used up, supplying the energy needed to react', 'Enzymes are regenerated at the end of each catalytic cycle.']],
+      'Enzymes bind the transition state more tightly than the substrate, lowering the activation barrier. They change the rate, not the thermodynamics.'),
+
+    mc('bc-en-2', 'enz-catalysis', 2,
+      'What does the induced-fit model say about enzymes and substrates?',
+      'Substrate binding causes conformational changes that bring the active site into its catalytically optimal shape',
+      [['The active site is a rigid, pre-formed mold that fits only the substrate', 'That is the older lock-and-key model.'],
+       ['The substrate changes shape but the enzyme stays rigid', 'Enzymes are flexible, and binding commonly reshapes the enzyme as well.'],
+       ['Enzymes only change shape when they are denatured', 'Small conformational changes are a normal part of catalysis and do not mean denaturation.']],
+      'Induced fit treats the active site as flexible. Binding reshapes it, which also helps it stabilize the transition state.'),
+
+    mc('bc-en-3', 'enz-kinetics', 1,
+      'In Michaelis-Menten kinetics, what does K_m represent?',
+      'The substrate concentration at which the reaction velocity is half of V_max',
+      [['The maximum velocity of the enzyme', 'That is V_max.'],
+       ['The turnover number', 'That is k_cat, the number of substrate molecules converted per active site per unit time at saturation.'],
+       ['The enzyme concentration needed for a half-maximal rate', 'K_m is a substrate concentration, not an enzyme concentration.']],
+      'K_m is the [S] at which v = ½ V_max. A lower K_m means half-saturation is reached at lower [S], which often (not always) reflects tighter substrate binding.'),
+
+    mc('bc-en-4', 'enz-kinetics', 2,
+      'Which value is the best single measure of catalytic efficiency, especially at low substrate concentration?',
+      'k_cat / K_m',
+      [['V_max', 'V_max depends on how much enzyme is present, so it is not a pure measure of efficiency.'],
+       ['K_m alone', 'It reports half-saturation but not how fast bound substrate is converted.'],
+       ['k_cat alone', 'It describes turnover at saturation but ignores how well the enzyme captures substrate at low concentration.']],
+      'k_cat / K_m combines binding and catalysis. At low [S], v ≈ (k_cat / K_m)[E][S].',
+      'The upper limit is set by diffusion, roughly 10⁸ to 10⁹ M⁻¹s⁻¹. Enzymes near that limit are called catalytically perfect.'),
+
+    mc('bc-en-5', 'enz-inhibition', 2,
+      'How does a competitive inhibitor change the apparent Michaelis-Menten parameters?',
+      'K_m increases and V_max stays the same',
+      [['K_m stays the same and V_max decreases', 'That is the pattern for pure noncompetitive inhibition.'],
+       ['Both K_m and V_max decrease', 'That is the pattern for uncompetitive inhibition.'],
+       ['K_m decreases and V_max increases', 'Reversible inhibitors cannot raise V_max or improve apparent binding.']],
+      'A competitive inhibitor occupies the active site, so more substrate is needed to reach half-maximal rate (higher apparent K_m). Enough substrate can outcompete it, so V_max is unchanged.',
+      'Noncompetitive: V_max falls, K_m unchanged. Uncompetitive: both V_max and K_m fall.'),
+
+    mc('bc-en-6', 'enz-inhibition', 3,
+      'On a Lineweaver-Burk plot, the lines for an enzyme with and without a competitive inhibitor:',
+      'Intersect on the y-axis, with the inhibited line having a steeper slope',
+      [['Intersect on the x-axis', 'Lines meeting on the x-axis (same K_m) are the signature of pure noncompetitive inhibition.'],
+       ['Are parallel', 'Parallel lines indicate uncompetitive inhibition.'],
+       ['Are identical', 'An inhibitor changes the apparent kinetics, so the lines differ.']],
+      'V_max is unchanged, so both lines share the same 1/V_max intercept on the y-axis. Apparent K_m rises, so the slope (K_m / V_max) is steeper.'),
+
+    mc('bc-en-7', 'enz-regulation', 2,
+      'Cooperative allosteric enzymes typically show which velocity versus [S] curve?',
+      'Sigmoidal (S-shaped)',
+      [['Hyperbolic, as in simple Michaelis-Menten kinetics', 'A hyperbola describes non-cooperative enzymes with independent active sites.'],
+       ['A straight line through the origin', 'Velocity is only linear at very low [S] and levels off at saturation.'],
+       ['A curve that falls as [S] increases', 'Velocity normally rises with [S]. A fall only happens with substrate inhibition, which is not the typical allosteric pattern.']],
+      'Cooperative binding among subunits gives an S-shaped curve, so a small change in [S] near the midpoint changes activity a lot.'),
+
+    mc('bc-en-8', 'enz-regulation', 2,
+      'Which is an example of covalent regulation of an enzyme?',
+      'A kinase phosphorylating a serine, threonine or tyrosine residue',
+      [['A feedback inhibitor binding at an allosteric site', 'That binding is noncovalent and reversible, not a covalent modification.'],
+       ['A competitive inhibitor occupying the active site', 'Binding in the active site is noncovalent and reversible.'],
+       ['The substrate concentration rising', 'That changes the rate by mass action, but the enzyme itself is not modified.']],
+      'Kinases attach phosphate to Ser, Thr or Tyr and phosphatases remove it, switching enzyme activity through a covalent change.'),
+
+    // ══ General Biochemistry · Metabolism fundamentals ══
+    mc('bc-mt-1', 'metab-overview', 1,
+      'Which statement correctly distinguishes catabolism from anabolism?',
+      'Catabolism breaks down fuels and captures energy as ATP and reduced cofactors, while anabolism builds biomolecules using ATP and reducing power',
+      [['Catabolism builds large molecules and consumes ATP', 'That describes anabolism. Catabolism does the reverse.'],
+       ['Both pathways release energy as ATP', 'Anabolic pathways consume ATP and reducing power.'],
+       ['Anabolic pathways simply run the same enzymes in reverse', 'Pathways often share reversible steps, but have distinct, separately regulated enzymes at the irreversible steps.']],
+      'Catabolism oxidizes fuels and conserves energy as ATP, NADH and FADH₂. Anabolism uses ATP and NADPH to build molecules.'),
+
+    mc('bc-mt-2', 'metab-overview', 1,
+      'What is the main role of NAD⁺ in catabolism?',
+      'It accepts a hydride from a substrate to become NADH, which carries electrons onward',
+      [['It transfers phosphate groups', 'That is the role of ATP.'],
+       ['It carries acyl groups', 'That is the role of coenzyme A.'],
+       ['It directly synthesizes ATP in glycolysis', 'NAD⁺ does not make ATP itself. NADH delivers electrons to the electron transport chain, which drives ATP synthesis.']],
+      'NAD⁺ is reduced to NADH by accepting a hydride (two electrons plus a proton) from oxidized substrates. NADH carries those electrons to the electron transport chain.'),
+
+    mc('bc-mt-3', 'glycolysis', 2,
+      'What is the net yield of glycolysis per molecule of glucose?',
+      '2 pyruvate, 2 ATP, 2 NADH',
+      [['2 pyruvate, 4 ATP, 2 NADH', 'Four ATP are made, but two are spent in the investment phase, so the net is 2.'],
+       ['2 acetyl-CoA, 2 ATP, 2 NADH', 'Acetyl-CoA comes from pyruvate through pyruvate dehydrogenase, after glycolysis.'],
+       ['1 pyruvate, 2 ATP, 1 NADH', 'Glucose (6 carbons) splits into two 3-carbon units, giving 2 pyruvate and 2 NADH.']],
+      'Two ATP are invested (hexokinase and PFK-1), four are made by substrate-level phosphorylation, and two NADH form at glyceraldehyde-3-phosphate dehydrogenase.'),
+
+    mc('bc-mt-4', 'glycolysis', 2,
+      'Which glycolytic enzyme is the main committed, regulated step, activated by AMP and inhibited by ATP and citrate?',
+      'Phosphofructokinase-1 (PFK-1)',
+      [['Hexokinase', 'It is inhibited by its product glucose 6-phosphate, but G6P can enter other pathways, so it is not the committed step.'],
+       ['Triose phosphate isomerase', 'It catalyzes a near-equilibrium isomerization and is not a major control point.'],
+       ['Aldolase', 'It cleaves fructose 1,6-bisphosphate in a near-equilibrium step and is not the major control point.']],
+      'PFK-1 converts fructose 6-phosphate to fructose 1,6-bisphosphate, the first committed step. Regulation by energy signals (AMP, ATP, citrate) controls glycolytic flux.'),
+
+    mc('bc-mt-5', 'tca-oxphos', 2,
+      'How many NADH, FADH₂ and GTP (or ATP) does one turn of the citric acid cycle produce directly?',
+      '3 NADH, 1 FADH₂, 1 GTP (or ATP)',
+      [['1 NADH, 3 FADH₂, 1 GTP', 'The cycle makes three NADH and one FADH₂, not the reverse.'],
+       ['2 NADH, 2 FADH₂, 2 GTP', 'There is only one FADH₂ (succinate dehydrogenase) and one GTP (succinyl-CoA synthetase) per turn.'],
+       ['4 NADH, 0 FADH₂, 1 GTP', 'Succinate dehydrogenase passes electrons to FAD, so one FADH₂ is made.']],
+      'Isocitrate dehydrogenase, α-ketoglutarate dehydrogenase and malate dehydrogenase each make NADH. Succinate dehydrogenase makes FADH₂, and succinyl-CoA synthetase makes GTP or ATP.'),
+
+    mc('bc-mt-6', 'tca-oxphos', 2,
+      'What drives ATP synthase during oxidative phosphorylation?',
+      'Protons flowing back into the matrix through the F₀ subunit, down their electrochemical gradient',
+      [['Direct phosphate transfer from a high-energy intermediate', 'That is substrate-level phosphorylation, which is a different mechanism.'],
+       ['Oxygen binding to ATP synthase', 'Oxygen is the terminal electron acceptor at Complex IV, not a ligand of ATP synthase.'],
+       ['NADH donating electrons directly to ATP synthase', 'NADH donates electrons to Complex I of the electron transport chain.']],
+      'The electron transport chain pumps protons out of the matrix. Their return through ATP synthase (proton-motive force) powers rotation of the enzyme and ATP formation.'),
+
+    // ══ General Biochemistry · Biochemical energetics ══
+    mc('bc-ge-1', 'gibbs', 2,
+      'A reaction has ΔG°′ = +10 kJ/mol. How can it still proceed in a cell?',
+      'If actual conditions make ΔG negative, for example low product concentration or coupling to ATP hydrolysis',
+      [['It cannot. A positive ΔG°′ means the reaction never occurs', 'ΔG°′ applies to standard conditions. The actual ΔG depends on real concentrations.'],
+       ['An enzyme lowers ΔG°′ until it is negative', 'Enzymes lower the activation energy, not ΔG°′ or ΔG.'],
+       ['Raising the temperature always makes it spontaneous', 'Temperature changes ΔG through ΔH and ΔS, but cells do not drive unfavorable reactions this way.']],
+      'The reaction direction depends on the actual ΔG, not ΔG°′. Keeping products low or coupling to a strongly favorable reaction can make ΔG negative.'),
+
+    mc('bc-ge-2', 'gibbs', 2,
+      'Which equation relates actual ΔG to ΔG°′ and the mass-action ratio Q?',
+      'ΔG = ΔG°′ + RT ln Q',
+      [['ΔG = ΔG°′ − RT ln Q', 'The sign is wrong. At equilibrium Q = K_eq and ΔG must be 0, which this version would not give.'],
+       ['ΔG = ΔG°′ × Q', 'Q enters through its logarithm and the terms add. They are not multiplied.'],
+       ['ΔG = ΔG°′ + RT ln K_eq', 'That equals zero by definition of K_eq. The real driving force depends on the current ratio Q.']],
+      'ΔG = ΔG°′ + RT ln Q. When Q is below K_eq the reaction runs forward, and at equilibrium ΔG = 0.'),
+
+    mc('bc-ge-3', 'atp', 1,
+      'Why is ATP hydrolysis considered “high-energy”?',
+      'The products (ADP and Pᵢ) are much more stable than ATP, from resonance, less charge repulsion and better solvation',
+      [['The terminal phosphoanhydride bond is very strong, so breaking it releases a lot of energy', 'Breaking any bond costs energy. The release comes from the products being more stable than ATP.'],
+       ['ATP is so unstable that it hydrolyzes within seconds in water', 'ATP is kinetically stable. Enzymes are needed for rapid hydrolysis, which lets cells control it.'],
+       ['The ΔG°′ of hydrolysis is close to zero, so ATP is a flexible carrier', 'ΔG°′ is about −30.5 kJ/mol, which is strongly negative.']],
+      'ATP hydrolysis has a large negative ΔG°′ (about −30.5 kJ/mol) because ADP and Pᵢ are stabilized by resonance, reduced electrostatic repulsion and solvation.'),
+
+    mc('bc-ge-4', 'atp', 2,
+      'A → B has ΔG°′ = +14 kJ/mol. ATP hydrolysis has ΔG°′ = −30.5 kJ/mol. What is ΔG°′ for the coupled reaction A + ATP → B + ADP + Pᵢ?',
+      '−16.5 kJ/mol',
+      [['+16.5 kJ/mol', 'The sign is wrong. The −30.5 term is larger in magnitude than +14, so the sum is negative.'],
+       ['−44.5 kJ/mol', 'That adds the magnitudes. ΔG°′ values add algebraically: +14 + (−30.5).'],
+       ['+44.5 kJ/mol', 'That adds the magnitudes and flips the sign. The sum is +14 + (−30.5).']],
+      'Free energy changes of coupled reactions add: +14 + (−30.5) = −16.5 kJ/mol. The coupled reaction is favorable even though A → B alone is not.'),
+
+    mc('bc-ge-5', 'redox', 2,
+      'Under standard conditions, which way do electrons flow spontaneously between two redox couples?',
+      'From the couple with the lower (more negative) E°′ toward the one with the higher (more positive) E°′',
+      [['From the higher E°′ toward the lower E°′', 'This is backwards. NADH (E°′ about −0.32 V) gives electrons to O₂ (E°′ about +0.82 V), not the reverse.'],
+       ['From the couple at higher concentration toward the lower', 'Concentrations shift the actual potential, but standard E°′ values set the direction under standard conditions.'],
+       ['Direction cannot be predicted from E°′ values', 'E°′ values do predict direction. A positive ΔE°′ corresponds to a negative ΔG°′.']],
+      'Electrons move toward the couple with the more positive reduction potential. That is why NADH passes electrons down the chain to oxygen.',
+      'ΔG°′ = −nFΔE°′, so a positive ΔE°′ (electron acceptor with the higher E°′) means a favorable, negative ΔG°′.'),
+
+    // ══ General Biochemistry · Organic chemistry review ══
+    mc('bc-or-1', 'org-hh', 2,
+      'A weak acid has pKa 4.8. In a solution at pH 5.8, what is [A⁻] / [HA]?',
+      '10 : 1 (mostly deprotonated)',
+      [['1 : 10', 'This flips the ratio. When pH is above pKa, the deprotonated form (A⁻) predominates.'],
+       ['1 : 1', 'That only happens when pH = pKa.'],
+       ['5.8 : 4.8', 'pH and pKa are logarithmic. The ratio is 10^(pH − pKa) = 10¹.']],
+      'Henderson-Hasselbalch: pH = pKa + log([A⁻]/[HA]). Here the log of the ratio is 5.8 − 4.8 = 1, so the ratio is 10.'),
+
+    mc('bc-or-2', 'org-func', 1,
+      'The side chain of glutamine contains which functional group?',
+      'An amide (–CONH₂)',
+      [['A carboxylic acid (–COOH)', 'That is glutamate. Glutamine has the amide version.'],
+       ['A primary amine (–NH₂)', 'Glutamine’s side-chain nitrogen is bonded to a carbonyl carbon (an amide), so it is not basic like a free amine.'],
+       ['An ester (–COOR)', 'Glutamine has no ester. The side chain ends in a nitrogen-bearing amide.']],
+      'Glutamine (and asparagine) carry an amide in the side chain. Glutamate and aspartate carry the carboxylic acid version.'),
+
+    mc('bc-or-3', 'org-func', 2,
+      'Why is cysteine’s thiol often a better nucleophile than serine’s hydroxyl in enzyme active sites?',
+      'Sulfur is larger and more polarizable, and the thiol is more acidic (pKa about 8 versus about 13), so a thiolate forms more easily near neutral pH',
+      [['Sulfur is more electronegative than oxygen', 'Oxygen is more electronegative. Sulfur’s advantage is polarizability and acidity.'],
+       ['Thiols are weaker acids than alcohols', 'Thiols are stronger acids than alcohols, which is why thiolates are easier to generate.'],
+       ['Cysteine side chains are always charged at neutral pH', 'They are mostly protonated at neutral pH unless the local environment lowers the pKa.']],
+      'A lower pKa means more of the reactive anion (thiolate) is available at physiological pH, and the larger sulfur atom is a softer, more polarizable nucleophile.'),
+
+    // ══ Food Microbiology (starter set) ══
+    mc('fm-1', 'fm-growth', 1,
+      'Which range is commonly called the temperature “danger zone” for rapid bacterial growth in food (FDA Food Code)?',
+      'About 41 to 135 °F (5 to 57 °C)',
+      [['Below 32 °F (0 °C)', 'Freezing stops growth for most microbes (without killing them). It is not the range of rapid growth.'],
+       ['135 to 212 °F (57 to 100 °C)', 'Hot-holding at 135 °F or above prevents growth, and boiling temperatures kill vegetative cells.'],
+       ['Only 100 to 120 °F (38 to 49 °C)', 'That band is part of the danger zone, but growth happens across a much wider range.']],
+      'Pathogens multiply fastest between the cold-holding limit (41 °F or below) and the hot-holding limit (135 °F or above). Some sources use 40 to 140 °F, so use the numbers your course specifies.'),
+
+    mc('fm-2', 'fm-growth', 1,
+      'Which pair are intrinsic factors that affect microbial growth in a food?',
+      'pH and water activity',
+      [['Storage temperature', 'Temperature belongs to the storage environment, so it is an extrinsic factor.'],
+       ['Relative humidity of the storage room', 'Also extrinsic, since it describes the environment, not the food.'],
+       ['Gas composition of the package', 'Extrinsic as well. It is set by packaging and storage.']],
+      'Intrinsic factors are properties of the food itself (pH, water activity, nutrients, redox potential, natural antimicrobials). Extrinsic factors describe the storage environment (temperature, humidity, gases).'),
+
+    mc('fm-3', 'fm-growth', 1,
+      'What does water activity (aw) measure?',
+      'How available the water in a food is to microbes (vapor pressure of the food divided by that of pure water)',
+      [['The percent moisture by weight', 'Two foods with the same moisture can have different aw because solutes and binding tie up water.'],
+       ['The pH of the water in the food', 'pH measures acidity, not water availability.'],
+       ['How much water was added during processing', 'aw describes the water in the finished food, not how much was added.']],
+      'aw runs from 0 to 1 (pure water = 1.0). Microbes need available water, so lower aw slows or stops growth.'),
+
+    mc('fm-4', 'fm-growth', 1,
+      'Why does adding large amounts of salt or sugar help preserve food?',
+      'It lowers water activity, so less water is available for microbial growth',
+      [['It raises the pH enough to block growth', 'Salt and sugar do not meaningfully raise pH. The effect is osmotic.'],
+       ['It sterilizes the food', 'Salting and sugaring slow growth but do not sterilize. Some tolerant microbes survive.'],
+       ['It kills spores directly', 'Spores are not killed this way. Lowering aw prevents growth, not survival.']],
+      'High solute concentration binds water and draws it out of cells by osmosis, which lowers aw and inhibits most spoilage and pathogenic bacteria.'),
+
+    mc('fm-5', 'fm-cells', 2,
+      'Which feature is characteristic of Gram-negative bacteria?',
+      'An outer membrane containing lipopolysaccharide (LPS) outside a thin peptidoglycan layer',
+      [['A thick peptidoglycan layer that retains crystal violet', 'That describes Gram-positive bacteria.'],
+       ['Teichoic acids embedded in a thick cell wall', 'Teichoic acids are a hallmark of Gram-positive walls.'],
+       ['No cell wall at all', 'Wall-less bacteria such as Mycoplasma exist, but that is not the Gram-negative feature.']],
+      'Gram-negative cells have a thin peptidoglycan layer sandwiched between the inner membrane and an LPS-containing outer membrane. The thin layer does not retain crystal violet through decolorization.'),
+
+    mc('fm-6', 'fm-safety', 2,
+      'In food canning regulations, a food is classed as “low-acid” when its pH is above about:',
+      '4.6',
+      [['3.0', 'Many acid foods fall below 3.0, but the regulatory boundary is higher.'],
+       ['7.0', 'Neutral pH is not the cutoff. The botulism concern begins at a much lower pH.'],
+       ['5.6', 'That is too high. The accepted boundary is lower, at about 4.6.']],
+      'Above pH 4.6, Clostridium botulinum spores can germinate and make toxin in sealed, low-oxygen containers. Low-acid foods therefore need a sterilizing heat treatment such as pressure canning.'),
+
+    mc('fm-7', 'fm-safety', 2,
+      'Why is Listeria monocytogenes a particular concern in refrigerated ready-to-eat foods?',
+      'It can grow at refrigeration temperatures',
+      [['It only grows above 50 °C', 'Listeria grows from about 0 to 45 °C. It is not a thermophile.'],
+       ['Cold storage kills it quickly', 'Refrigeration slows most microbes, but Listeria keeps multiplying slowly, and freezing does not kill it.'],
+       ['Any amount of salt destroys it', 'Listeria tolerates fairly high salt concentrations.']],
+      'Listeria is a psychrotroph. Foods held cold for long periods without further cooking, such as deli meats and soft cheeses, can still allow growth.'),
+
+    // ══ Introduction to Horticulture (starter set) ══
+    mc('h-1', 'h-nutrition', 1,
+      'A fertilizer labeled 10-10-10 lists the percent by weight of:',
+      'Total nitrogen (N), available phosphate (as P₂O₅) and soluble potash (as K₂O)',
+      [['Nitrogen, potassium and calcium', 'The three numbers are N, P and K, not calcium.'],
+       ['Elemental N, P and K exactly as pure elements', 'Phosphorus and potassium are expressed as oxide equivalents (P₂O₅ and K₂O), not as pure elements.'],
+       ['Parts per million of each nutrient in the soil solution', 'The label gives percent by weight of the product, not soil concentrations.']],
+      'The N-P-K numbers are percent by weight: nitrogen as N, phosphorus as P₂O₅ and potassium as K₂O.'),
+
+    mc('h-2', 'h-nutrition', 1,
+      'At roughly what soil pH range are most nutrients most available to plants?',
+      'About 6.0 to 7.0',
+      [['About 4.0 to 5.0', 'In strongly acidic soil, phosphorus and some other nutrients become less available and aluminum or manganese can reach toxic levels. Acid-loving crops are the exception.'],
+       ['About 8.0 to 9.0', 'In alkaline soil iron, manganese, zinc and phosphorus become less available, causing problems like iron chlorosis.'],
+       ['pH does not affect nutrient availability', 'Soil pH strongly controls which nutrients are soluble and available.']],
+      'Most nutrients are most available near slightly acidic to neutral pH. Some crops, such as blueberries, prefer more acidic soil.'),
+
+    mc('h-3', 'h-growth', 2,
+      'A short-day plant flowers when:',
+      'The uninterrupted dark period is longer than a critical length',
+      [['The day length is longer than a critical length', 'That describes long-day plants.'],
+       ['Total sunlight hours per week pass a threshold', 'Photoperiod responses depend on the daily light and dark pattern, not weekly totals.'],
+       ['Temperature rises above a set value', 'Temperature can modify flowering, but it is not what defines a short-day response.']],
+      'Photoperiod responses are driven by night length. A brief flash of light in a long night can block flowering in a short-day plant.'),
+
+    mc('h-4', 'h-growth', 1,
+      'Which method of propagation produces genetically identical offspring (clones)?',
+      'Stem cuttings',
+      [['Sowing seed from a cross-pollinated parent', 'Seed comes from sexual reproduction, which reshuffles genes, so seedlings vary.'],
+       ['Pollen transfer between two cultivars', 'That is sexual reproduction, so the offspring are genetically new combinations.'],
+       ['Seed germination under mist', 'Mist helps cuttings root, but seeds are still the product of sexual reproduction.']],
+      'Cuttings, grafting, division and layering are asexual (vegetative) methods. The new plant carries the parent’s exact genetics.'),
+
+    // ══ Fruit Production (starter set) ══
+    mc('fp-1', 'fp-orchard', 1,
+      'A temperate tree fruit’s “chilling requirement” is:',
+      'The accumulated cold exposure (commonly counted at about 32 to 45 °F) needed to break dormancy and allow normal bud break',
+      [['The frost needed to ripen the fruit', 'Chilling affects dormancy release in buds, not fruit ripening.'],
+       ['The cold needed to kill overwintering insects', 'Pest mortality is a different topic. Chilling requirement is about bud dormancy.'],
+       ['The freezing damage the flowers can tolerate', 'That describes frost tolerance. Chilling requirement is about dormancy release.']],
+      'Temperate fruit trees need enough cold hours in winter to release dormancy. If they do not get them, bud break and bloom can be delayed, uneven or poor.'),
+
+    mc('fp-2', 'fp-orchard', 1,
+      'Why do many apple cultivars need a compatible second cultivar nearby?',
+      'Most are self-unfruitful, so they need cross-pollination from a compatible cultivar (a pollinizer)',
+      [['Apple trees are dioecious, with separate male and female trees', 'Apple flowers are perfect, containing both male and female parts.'],
+       ['To supply extra nitrogen to the soil', 'Pollination has nothing to do with soil nitrogen.'],
+       ['Pollen is wind-dispersed and only travels a few feet', 'Apples depend mainly on insect pollinators such as bees.']],
+      'Most apple cultivars set poor crops with their own pollen. A compatible pollinizer cultivar and active insect pollinators are needed for good fruit set.'),
+
+    mc('fp-3', 'fp-sites', 1,
+      'Highbush blueberries grow best in soil with a pH of about:',
+      '4.5 to 5.5',
+      [['6.5 to 7.5', 'At that pH blueberries typically show iron deficiency, with yellowing leaves and poor growth.'],
+       ['7.5 to 8.5', 'Too alkaline for blueberries, which struggle to take up iron.'],
+       ['Below 3.5', 'Too acidic. Even acid-loving blueberries need pH in a moderate acid range.']],
+      'Blueberries are acid-loving plants. Growers often lower soil pH with sulfur and choose sites with acidic, well-drained, organic soils.'),
+
+    mc('fp-4', 'fp-sites', 2,
+      'What is a main purpose of a dwarfing rootstock in a fruit tree?',
+      'To control tree size and encourage earlier fruiting for the cultivar grafted on top',
+      [['To change the fruit’s genetics', 'The fruit stays true to the scion cultivar. The rootstock changes tree behavior, not the fruit type.'],
+       ['To eliminate the need for pruning', 'Dwarfing rootstocks make trees smaller, but trees still need training and pruning.'],
+       ['To make the tree self-pollinating', 'Pollination compatibility comes from the scion cultivar, not the rootstock.']],
+      'Grafting a scion cultivar onto a dwarfing rootstock gives a smaller tree that fruits earlier and is easier to manage.'),
+
+    // ══ Organic Chemistry Review (preserved from the original Retron) ══
+    {
+      id: 'acyl-sub-1', subject: 'orgo', concept: 'o-acyl', type: 'mc', diff: 3,
+      prompt: 'In the base-catalyzed hydrolysis of methyl benzoate, which step is RATE-DETERMINING?',
+      reactant: 'MethylBenzoate',
+      options: [
+        { label: 'Deprotonation of water by hydroxide', correct: false },
+        { label: 'Nucleophilic addition of OH⁻ to the carbonyl', correct: true },
+        { label: 'Collapse of the tetrahedral intermediate, loss of methoxide', correct: false },
+        { label: 'Proton transfer to generate benzoate', correct: false },
+      ],
+      explain: 'Addition of hydroxide to form the tetrahedral intermediate is the slow step for most BAC2 ester hydrolyses. The carbon goes from sp² to sp³ and charge develops.',
+    },
+    {
+      id: 'arrow-1', subject: 'orgo', concept: 'o-arrow', type: 'arrow', diff: 2,
+      prompt: 'Draw the first curved arrow in the acid-catalyzed Fischer esterification. Where does the arrow originate?',
+      // Coordinates are in the 600 x 260 canvas, matching the drawing exactly.
+      arrowChoices: [
+        { id: 'a', label: 'From a lone pair on the carbonyl oxygen', correct: true, from: [177, 52], to: [432, 92] },
+        { id: 'b', label: 'From the C=O π bond', correct: false, from: [177, 80], to: [432, 92] },
+        { id: 'c', label: 'From the α-carbon C–H bond', correct: false, from: [128, 126], to: [432, 92] },
+        { id: 'd', label: 'From a lone pair on the hydroxyl oxygen', correct: false, from: [225, 128], to: [432, 92] },
+      ],
+      explain: 'Protonation of the carbonyl oxygen is the activating first step. A lone pair on the carbonyl O picks up H⁺ from the acid catalyst, which makes the carbonyl carbon more electrophilic.',
+      more: 'Starting at the π bond would put the proton on carbon. Starting at the hydroxyl oxygen would protonate the wrong oxygen and not activate the carbonyl.',
+    },
+    {
+      id: 'retro-1', subject: 'orgo', concept: 'o-synth', type: 'mc', diff: 2,
+      prompt: 'Target: N-ethyl acetamide. Which disconnection gives the most practical forward synthesis?',
+      options: [
+        { label: 'C–N bond: acetyl chloride + ethylamine', correct: true },
+        { label: 'C–C bond: formaldehyde + methyl Grignard', correct: false },
+        { label: 'C=O bond: ethylamine + ketene oxidation', correct: false },
+        { label: 'N–H bond: imine reduction', correct: false },
+      ],
+      explain: 'Acyl halide plus amine (Schotten-Baumann) is a high-yielding, clean route. Direct acid plus amine needs coupling reagents or heat to overcome the ammonium carboxylate salt.',
+    },
+    {
+      id: 'reagent-1', subject: 'orgo', concept: 'o-synth', type: 'mc', diff: 2,
+      prompt: 'Convert a carboxylic acid to an acyl chloride. Which reagent is preferred for acid-sensitive substrates?',
+      options: [
+        { label: 'SOCl₂', correct: false, detail: 'Cheap but generates HCl' },
+        { label: '(COCl)₂ / cat. DMF', correct: true, detail: 'Oxalyl chloride: mild, volatile byproducts' },
+        { label: 'PCl₅', correct: false, detail: 'Harsh, POCl₃ byproduct' },
+        { label: 'Cl₂ / hν', correct: false, detail: 'Radical chlorination, not applicable' },
+      ],
+      explain: 'Oxalyl chloride with catalytic DMF is preferred for sensitive substrates. The byproducts (CO, CO₂, HCl) are gases, so purification is easy.',
+    },
+    {
+      id: 'product-1', subject: 'orgo', concept: 'o-acyl', type: 'mc', diff: 2,
+      prompt: 'Ethyl acetate + excess CH₃MgBr, then H₃O⁺. Major product?',
+      reactant: 'EthylAcetate', reagents: '2 eq CH₃MgBr', conditions: 'then H₃O⁺',
+      options: [
+        { label: 'tert-butanol (2-methyl-2-propanol)', correct: true },
+        { label: 'Methyl ethyl ketone', correct: false },
+        { label: 'Acetaldehyde', correct: false },
+        { label: 'No reaction: the ester is inert', correct: false },
+      ],
+      explain: 'Esters undergo double addition with Grignards. The first addition gives a ketone that is more reactive than the ester, so a second equivalent adds and gives a tertiary alcohol. Two new methyls plus the original methyl and the OH give tert-butanol.',
+    },
+    {
+      id: 'mech-2', subject: 'orgo', concept: 'o-acyl', type: 'mc', diff: 2,
+      prompt: 'Acetyl chloride + methanol (no catalyst, 0 °C). Mechanism?',
+      reactant: 'AcetylChloride',
+      options: [
+        { label: 'Addition-elimination (tetrahedral intermediate)', correct: true },
+        { label: 'SN2 at the carbonyl carbon (concerted)', correct: false },
+        { label: 'SN1 via an acylium ion', correct: false },
+        { label: 'Radical chain', correct: false },
+      ],
+      explain: 'Acyl chlorides react by classic addition-elimination. Methanol adds to the carbonyl to form a tetrahedral intermediate, then chloride (an excellent leaving group) departs to regenerate the C=O. An SN1 acylium path only appears in very polar or cationic conditions.',
+    },
+    {
+      id: 'nmr-1', subject: 'orgo', concept: 'o-spec', type: 'nmr', diff: 2,
+      prompt: 'A compound shows ¹H NMR: δ 4.12 (q, 2H), 2.05 (s, 3H), 1.26 (t, 3H). Tap the peak most diagnostic for an ETHYL ESTER.',
+      peaks: [
+        { shift: 4.12, h: 60, split: 4, label: 'q' },
+        { shift: 2.05, h: 70, split: 1, label: 's' },
+        { shift: 1.26, h: 75, split: 3, label: 't' },
+      ],
+      correctPeak: 0,
+      explain: 'The quartet at δ 4.12 (OCH₂) is the fingerprint of an ethyl ester. The oxygen deshields the CH₂, pushing it downfield, and coupling to the neighboring CH₃ gives a clean quartet.',
+    },
+    {
+      id: 'ir-1', subject: 'orgo', concept: 'o-spec', type: 'mc', diff: 1,
+      prompt: 'IR shows a strong, sharp band at 1735 cm⁻¹ and no broad O–H. Most likely functional group?',
+      options: [
+        { label: 'Carboxylic acid', correct: false },
+        { label: 'Ester (C=O)', correct: true },
+        { label: 'Amide', correct: false },
+        { label: 'Anhydride', correct: false },
+      ],
+      explain: 'Esters absorb around 1735 to 1750 cm⁻¹. A carboxylic acid would show a broad O–H (2500 to 3300). Amides are lower (about 1650 to 1690). Anhydrides give two bands (about 1820 and 1750).',
+    },
+  ];
+
+  var LEVEL_NAMES = { 1: 'Foundation', 2: 'Core', 3: 'Challenge' };
+  var MODES = {
+    warm:  { id: 'warm',  name: 'Quick Warm-Up',  count: 3,  time: 'About 2 min' },
+    daily: { id: 'daily', name: 'Daily Review',   count: 5,  time: 'About 5–7 min' },
+    deep:  { id: 'deep',  name: 'Deep Practice',  count: 12, time: 'About 15 min' },
+    retry: { id: 'retry', name: 'Retry Missed',   count: 0,  time: '' },
+  };
+
+  var QBY = {}; QUESTIONS.forEach(function (q) { QBY[q.id] = q; });
+  var CBY = {}; CONCEPTS.forEach(function (c) { CBY[c.id] = c; });
+  var SBY = {}; SUBJECTS.forEach(function (s) { SBY[s.id] = s; });
+
+  // ───────────────────────── Engine ─────────────────────────
+  var DAY = 86400000;
+  var INTERVALS = [1, 2, 4, 8, 16, 32]; // days until next review, indexed by box
+  var SOLID_BOX = 3;                    // "solid" = right on three spaced reviews
+
+  function dayNum(now) {
+    var n = now == null ? Date.now() : now;
+    var off = new Date(n).getTimezoneOffset() * 60000;
+    return Math.floor((n - off) / DAY);
+  }
+
+  function blank(now) {
+    return { v: 2, created: now == null ? Date.now() : now, q: {}, sessions: [], active: null,
+      focus: 'mixed', flagged: [], lastExport: null, prefs: {} };
+  }
+
+  function isValid(d) {
+    return !!d && typeof d === 'object' && d.v === 2 && d.q && typeof d.q === 'object';
+  }
+
+  function normalize(d) {
+    var out = blank(d.created);
+    out.q = {};
+    Object.keys(d.q).forEach(function (id) {
+      var r = d.q[id];
+      if (!r || typeof r !== 'object') return;
+      out.q[id] = { box: r.box | 0, due: r.due == null ? null : r.due | 0, n: r.n | 0, c: r.c | 0,
+        last: r.last == null ? null : r.last | 0, hist: typeof r.hist === 'string' ? r.hist : '' };
+    });
+    out.sessions = Array.isArray(d.sessions) ? d.sessions.slice(0, 100) : [];
+    out.active = d.active && Array.isArray(d.active.ids) ? d.active : null;
+    out.focus = d.focus === 'mixed' || SBY[d.focus] ? d.focus : 'mixed';
+    out.flagged = Array.isArray(d.flagged) ? d.flagged.filter(function (x) { return typeof x === 'string'; }) : [];
+    out.lastExport = d.lastExport || null;
+    out.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
+    return out;
+  }
+
+  function rec(data, id) { return data.q[id] || null; }
+
+  // Record a first attempt (or a retry, which is practice only and never counted).
+  function answer(data, qid, ok, opts) {
+    opts = opts || {};
+    if (opts.retry) return;
+    var t = dayNum(opts.now);
+    var r = data.q[qid] || { box: 0, due: null, n: 0, c: 0, last: null, hist: '' };
+    var firstEver = r.n === 0;
+    var wasDue = r.due != null && r.due <= t;
+    r.n += 1;
+    if (ok) r.c += 1;
+    r.hist = (r.hist + (ok ? '1' : '0')).slice(-8);
+    r.last = t;
+    if (!ok) {
+      r.box = 0;
+      r.due = t + INTERVALS[0];
+    } else if (firstEver) {
+      r.box = 1;
+      r.due = t + INTERVALS[1];
+    } else if (wasDue) {
+      r.box = Math.min(r.box + 1, INTERVALS.length - 1);
+      r.due = t + INTERVALS[r.box];
+    }
+    // Correct but early (not due yet): recorded, schedule unchanged. No credit for cramming.
+    data.q[qid] = r;
+  }
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  // Difficulty ceiling per subject, derived from history (no stored state).
+  function subjectLevel(data, sid) {
+    var n1 = 0, c1 = 0, n2 = 0, c2 = 0;
+    QUESTIONS.forEach(function (q) {
+      if (q.subject !== sid) return;
+      var r = data.q[q.id];
+      if (!r || !r.n) return;
+      if (q.diff === 1) { n1 += r.n; c1 += r.c; }
+      else if (q.diff === 2) { n2 += r.n; c2 += r.c; }
+    });
+    var lvl = 1;
+    if (n1 >= 4 && c1 / n1 >= 0.7) lvl = 2;
+    if (lvl === 2 && n2 >= 4 && c2 / n2 >= 0.7) lvl = 3;
+    return lvl;
+  }
+
+  // Smoothed miss rate for a concept (0.5 when untouched).
+  function conceptMiss(data, cid) {
+    var n = 0, c = 0;
+    QUESTIONS.forEach(function (q) {
+      if (q.concept !== cid) return;
+      var r = data.q[q.id];
+      if (r) { n += r.n; c += r.c; }
+    });
+    return (n - c + 1) / (n + 2);
+  }
+
+  // Choose question ids for a session.
+  function pickSession(data, o) {
+    var t = dayNum(o.now);
+    var count = o.count;
+    var rnd = mulberry32(hashStr('s' + t + ':' + data.sessions.length + ':' + (o.salt || '')));
+    var subjects = o.subject === 'mixed'
+      ? SUBJECTS.filter(function (s) { return s.weight > 0; }).map(function (s) { return s.id; })
+      : [o.subject];
+    var pool = QUESTIONS.filter(function (q) { return subjects.indexOf(q.subject) >= 0; });
+
+    var due = [], fresh = [], rest = [];
+    pool.forEach(function (q) {
+      var r = data.q[q.id];
+      if (!r || !r.n) fresh.push(q);
+      else if (r.due != null && r.due <= t) due.push(q);
+      else rest.push(q);
+    });
+
+    var levels = {};
+    subjects.forEach(function (s) { levels[s] = subjectLevel(data, s); });
+
+    var picked = [], used = {}, perSubj = {}, perConcept = {};
+    function take(q) {
+      picked.push(q); used[q.id] = true;
+      perSubj[q.subject] = (perSubj[q.subject] || 0) + 1;
+      perConcept[q.concept] = (perConcept[q.concept] || 0) + 1;
+    }
+
+    // 1) Revisit: what he missed (lowest box) first, capped so new material still appears.
+    due.sort(function (a, b) {
+      var ra = data.q[a.id], rb = data.q[b.id];
+      return (ra.box - rb.box) || (ra.due - rb.due) || (rnd() - 0.5);
+    });
+    var dueCap = Math.max(1, Math.ceil(count * 0.6));
+    for (var i = 0; i < due.length && picked.length < dueCap; i++) take(due[i]);
+
+    // Weighted subject rotation: biochemistry gets the most, then food micro.
+    function fillFrom(list, score) {
+      while (picked.length < count) {
+        var order = subjects.slice().sort(function (a, b) {
+          var wa = SBY[a].weight / ((perSubj[a] || 0) + 1);
+          var wb = SBY[b].weight / ((perSubj[b] || 0) + 1);
+          return wb - wa || (rnd() - 0.5);
+        });
+        var chosen = null;
+        for (var s = 0; s < order.length && !chosen; s++) {
+          var best = null, bestScore = Infinity;
+          for (var k = 0; k < list.length; k++) {
+            var q = list[k];
+            if (used[q.id] || q.subject !== order[s]) continue;
+            var sc = score(q);
+            if (sc < bestScore) { bestScore = sc; best = q; }
+          }
+          chosen = best;
+        }
+        if (!chosen) return;
+        take(chosen);
+      }
+    }
+
+    // 2) New material: right-sized difficulty, leaning toward weaker concepts.
+    fillFrom(fresh, function (q) {
+      var lvl = levels[q.subject];
+      var pen = q.diff > lvl ? 3 * (q.diff - lvl) : 0.4 * (lvl - q.diff);
+      pen -= 2 * conceptMiss(data, q.concept);
+      pen += 1.5 * (perConcept[q.concept] || 0);
+      return pen + rnd() * 0.8;
+    });
+    // 3) Familiar material not yet due: lowest box, longest ago.
+    fillFrom(rest, function (q) {
+      var r = data.q[q.id];
+      return r.box - Math.min(10, t - (r.last == null ? t : r.last)) * 0.1 + 1.5 * (perConcept[q.concept] || 0) + rnd() * 0.8;
+    });
+    // 4) Anything still due.
+    fillFrom(due, function (q) { return data.q[q.id].box + rnd(); });
+
+    // Shuffle, then open with the gentlest question.
+    for (var j = picked.length - 1; j > 0; j--) {
+      var m = Math.floor(rnd() * (j + 1));
+      var tmp = picked[j]; picked[j] = picked[m]; picked[m] = tmp;
+    }
+    var lo = 0;
+    for (var p = 1; p < picked.length; p++) if (picked[p].diff < picked[lo].diff) lo = p;
+    if (lo > 0) { var first = picked.splice(lo, 1)[0]; picked.unshift(first); }
+    return picked.map(function (q) { return q.id; });
+  }
+
+  // Stable option order for a question within one session.
+  function optionOrder(q, seed) {
+    var n = q.options ? q.options.length : 0;
+    var idx = []; for (var i = 0; i < n; i++) idx.push(i);
+    var rnd = mulberry32(hashStr(q.id + ':' + seed));
+    for (var j = n - 1; j > 0; j--) {
+      var m = Math.floor(rnd() * (j + 1));
+      var tmp = idx[j]; idx[j] = idx[m]; idx[m] = tmp;
+    }
+    return idx;
+  }
+
+  function newSession(data, modeId, subject, now, ids) {
+    var mode = MODES[modeId];
+    var sessionIds = ids || pickSession(data, { subject: subject, count: mode.count, now: now });
+    var seed = String(data.sessions.length) + ':' + dayNum(now) + ':' + (now == null ? Date.now() : now);
+    var orders = {};
+    sessionIds.forEach(function (id) { orders[id] = optionOrder(QBY[id], seed); });
+    return { mode: modeId, subject: subject, ids: sessionIds, i: 0, answers: [], orders: orders,
+      started: now == null ? Date.now() : now };
+  }
+
+  // Close the active session and keep a compact log. Retries are not logged.
+  function finishSession(data, now) {
+    var a = data.active;
+    if (!a) return null;
+    var summary = null;
+    if (a.mode !== 'retry') {
+      var c = a.answers.filter(function (x) { return x.ok; }).length;
+      summary = { t: now == null ? Date.now() : now, mode: a.mode, subject: a.subject, n: a.answers.length, c: c,
+        missed: a.answers.filter(function (x) { return !x.ok; }).map(function (x) { return x.id; }) };
+      data.sessions.unshift(summary);
+      data.sessions = data.sessions.slice(0, 100);
+    }
+    data.active = null;
+    return summary;
+  }
+
+  function stats(data, filter, now) {
+    var t = dayNum(now);
+    var s = { total: 0, seen: 0, solid: 0, learning: 0, fresh: 0, ready: 0, n: 0, c: 0, acc: null };
+    QUESTIONS.forEach(function (q) {
+      if (filter && !filter(q)) return;
+      s.total++;
+      var r = data.q[q.id];
+      if (!r || !r.n) { s.fresh++; return; }
+      s.seen++;
+      s.n += r.n; s.c += r.c;
+      if (r.box >= SOLID_BOX) s.solid++; else s.learning++;
+      if (r.due != null && r.due <= t) s.ready++;
+    });
+    s.acc = s.n ? s.c / s.n : null;
+    return s;
+  }
+
+  // ───────────────────────── Storage ─────────────────────────
+  var Store = {
+    ok: true,
+    load: function () {
+      var raw = null;
+      try {
+        raw = window.localStorage.getItem(STORE_KEY);
+        window.localStorage.setItem('retron.probe', '1');
+        window.localStorage.removeItem('retron.probe');
+      } catch (e) { Store.ok = false; return blank(); }
+      if (!raw) return blank();
+      try {
+        var d = JSON.parse(raw);
+        if (isValid(d)) return normalize(d);
+      } catch (e) { /* fall through */ }
+      try { window.localStorage.setItem(STORE_KEY + '.unreadable', raw); } catch (e2) { /* ignore */ }
+      return blank();
+    },
+    save: function (d) {
+      try { window.localStorage.setItem(STORE_KEY, JSON.stringify(d)); Store.ok = true; return true; }
+      catch (e) { Store.ok = false; return false; }
+    },
+  };
+
+  function exportPayload(data, now) {
+    return JSON.stringify({ app: 'retron', version: 2, exportedAt: now == null ? Date.now() : now, data: data }, null, 1);
+  }
+  function parseImport(text) {
+    var o = JSON.parse(text);
+    if (!o || o.app !== 'retron' || !isValid(o.data)) throw new Error('Not a Retron backup file.');
+    return { exportedAt: o.exportedAt || null, data: normalize(o.data) };
+  }
+
+  window.Retron = {
+    STORE_KEY: STORE_KEY, SUBJECTS: SUBJECTS, CONCEPTS: CONCEPTS, QUESTIONS: QUESTIONS, MODES: MODES, LEVEL_NAMES: LEVEL_NAMES,
+    QBY: QBY, CBY: CBY, SBY: SBY, INTERVALS: INTERVALS, SOLID_BOX: SOLID_BOX,
+    Engine: { dayNum: dayNum, blank: blank, isValid: isValid, normalize: normalize, rec: rec, answer: answer,
+      pickSession: pickSession, optionOrder: optionOrder, newSession: newSession, finishSession: finishSession,
+      stats: stats, subjectLevel: subjectLevel, conceptMiss: conceptMiss },
+    Store: Store, exportPayload: exportPayload, parseImport: parseImport,
+  };
+})();
+
+</script>
 
 <script type="text/babel">
 // ═══ frames/macos-window.jsx ═══
@@ -621,492 +1543,360 @@ Object.assign(window, {
   MethylBenzoate, Hydroxide, TetrahedralInt, NMRSpectrum, zigzag,
 });
 
+// ═══ app/retron-app.jsx · part 1: tokens, atoms, storage hook, shell, Home ═══
+const { SUBJECTS, CONCEPTS, QUESTIONS, MODES, LEVEL_NAMES, QBY, CBY, SBY, Engine, Store } = window.Retron;
+const MONO = '"JetBrains Mono", ui-monospace';
 
-// ═══ app/questions.jsx ═══
-// Question bank — ACS/grad-level, focused on Connor's chosen topics.
-// Types: 'mc' (multiple choice), 'arrow' (arrow-pushing — pick which bond/atom
-// the arrow goes between), 'retro' (tap disconnection), 'nmr' (match peak).
-//
-// Each question is self-contained and knows how to render its own body via a
-// type tag consumed by the Question screen.
+const TWEAK_DEFAULS = /*EDITMODE-BEGIN*/{
+  "theme": "lab",
+  "density": "compact"
+}/*EDITMODE-END*/;
 
-const QUESTIONS = [
-  // ── Mechanism / arrow-pushing ───────────────────────────────────────────
-  {
-    id: 'acyl-sub-1',
-    topic: 'Carboxylic Acid Derivatives',
-    type: 'mechanism',
-    difficulty: 'ACS',
-    prompt: 'In the base-catalyzed hydrolysis of methyl benzoate, which step is RATE-DETERMINING?',
-    options: [
-      { label: 'Deprotonation of water by hydroxide', correct: false },
-      { label: 'Nucleophilic addition of OH⁻ to the carbonyl', correct: true },
-      { label: 'Collapse of tetrahedral intermediate, loss of methoxide', correct: false },
-      { label: 'Proton transfer to generate benzoate', correct: false },
-    ],
-    explanation: 'Addition of hydroxide to form the tetrahedral intermediate is the slow step for most BAC2 ester hydrolyses — sp² → sp³ rehybridization with charge development.',
-    reactant: 'MethylBenzoate',
-  },
-  {
-    id: 'arrow-1',
-    topic: 'Arrow Pushing',
-    type: 'arrow',
-    difficulty: 'ACS',
-    prompt: 'Draw the first curved arrow in the acid-catalyzed Fischer esterification. Where does the arrow originate?',
-    arrowChoices: [
-      { id: 'a', label: "From the carbonyl O lone pair", correct: true, from: [80, 28], to: [75, 18] },
-      { id: 'b', label: "From the C=O π bond", correct: false, from: [102, 40], to: [102, 28] },
-      { id: 'c', label: "From the α-carbon C–H", correct: false, from: [60, 60], to: [80, 52] },
-      { id: 'd', label: "From the methanol O–H", correct: false, from: [160, 50], to: [150, 50] },
-    ],
-    explanation: 'Protonation of the carbonyl oxygen is the activating first step — a lone pair on the carbonyl O picks up H⁺ from the acid catalyst, increasing electrophilicity of the carbonyl carbon.',
-  },
-  {
-    id: 'retro-1',
-    topic: 'Retrosynthesis',
-    type: 'retro',
-    difficulty: 'ACS',
-    prompt: 'Target: N-ethyl acetamide. Which disconnection gives the most practical forward synthesis?',
-    options: [
-      { label: 'C–N bond → acetyl chloride + ethylamine', correct: true },
-      { label: 'C–C bond → formaldehyde + methyl Grignard', correct: false },
-      { label: 'C=O bond → ethylamine + ketene oxidation', correct: false },
-      { label: 'N–H bond → imine reduction', correct: false },
-    ],
-    explanation: 'Acyl halide + amine (Schotten–Baumann) is the highest-yielding, cleanest route — direct acid + amine needs coupling reagents or heat to overcome the ammonium carboxylate salt.',
-  },
-  {
-    id: 'reagent-1',
-    topic: 'Name the Reagent',
-    type: 'reagent',
-    difficulty: 'ACS',
-    prompt: 'Convert a carboxylic acid → acyl chloride. Which reagent is preferred for acid-sensitive substrates?',
-    options: [
-      { label: 'SOCl₂', correct: false, detail: 'Cheap but generates HCl' },
-      { label: '(COCl)₂ / cat. DMF', correct: true, detail: 'Oxalyl chloride — mild, volatile byproducts' },
-      { label: 'PCl₅', correct: false, detail: 'Harsh, POCl₃ byproduct' },
-      { label: 'Cl₂ / hν', correct: false, detail: 'Radical chlorination, not applicable' },
-    ],
-    explanation: 'Oxalyl chloride with catalytic DMF is preferred for sensitive substrates — byproducts (CO, CO₂, HCl) are gaseous and purification is trivial.',
-  },
-  {
-    id: 'product-1',
-    topic: 'Predict the Product',
-    type: 'product',
-    difficulty: 'ACS',
-    prompt: 'Ethyl acetate + excess CH₃MgBr, then H₃O⁺. Major product?',
-    reactant: 'EthylAcetate',
-    reagents: '2 eq CH₃MgBr',
-    conditions: 'then H₃O⁺',
-    options: [
-      { label: 'tert-butanol (2-methyl-2-propanol)', correct: true },
-      { label: 'Methyl ethyl ketone', correct: false },
-      { label: 'Acetaldehyde', correct: false },
-      { label: 'No reaction — ester is inert', correct: false },
-    ],
-    explanation: 'Esters undergo double addition with Grignards: first addition gives a ketone intermediate that is more reactive than the ester, so a second equivalent adds to give a tertiary alcohol. Two methyls + the original methyl + OH = t-butanol.',
-  },
-  {
-    id: 'mech-2',
-    topic: 'Identify Mechanism',
-    type: 'mechanism',
-    difficulty: 'ACS',
-    prompt: 'Acetyl chloride + methanol (no catalyst, 0 °C). Mechanism?',
-    reactant: 'AcetylChloride',
-    options: [
-      { label: 'Addition–elimination (tetrahedral intermediate)', correct: true },
-      { label: 'SN2 at carbonyl carbon (concerted)', correct: false },
-      { label: 'SN1 via acylium ion', correct: false },
-      { label: 'Radical chain', correct: false },
-    ],
-    explanation: 'Acyl chlorides go via classic addition–elimination: MeOH adds to the carbonyl forming a tetrahedral intermediate; chloride (excellent LG) departs to regenerate the C=O. SN1 acylium only appears in very polar / cationic conditions.',
-  },
-  {
-    id: 'nmr-1',
-    topic: 'NMR Spectroscopy',
-    type: 'nmr',
-    difficulty: 'ACS',
-    prompt: 'A compound shows ¹H NMR: δ 4.12 (q, 2H), 2.05 (s, 3H), 1.26 (t, 3H). Tap the peak most diagnostic for an ETHYL ESTER.',
-    peaks: [
-      { shift: 4.12, h: 60, split: 4, label: 'q' },
-      { shift: 2.05, h: 70, split: 1, label: 's' },
-      { shift: 1.26, h: 75, split: 3, label: 't' },
-    ],
-    correctPeak: 0,
-    explanation: 'The quartet at δ 4.12 (OCH₂) is the fingerprint of an ethyl ester — O-deshielding pushes CH₂ downfield, and coupling to the adjacent CH₃ gives a clean quartet.',
-  },
-  {
-    id: 'ir-1',
-    topic: 'IR Spectroscopy',
-    type: 'mechanism',
-    difficulty: 'ACS',
-    prompt: 'IR shows a strong, sharp band at 1735 cm⁻¹ and no broad O–H. Most likely functional group?',
-    options: [
-      { label: 'Carboxylic acid', correct: false },
-      { label: 'Ester (C=O)', correct: true },
-      { label: 'Amide', correct: false },
-      { label: 'Anhydride', correct: false },
-    ],
-    explanation: 'Esters absorb around 1735–1750 cm⁻¹. Carboxylic acids would show a broad O–H (2500–3300). Amides are lower (~1680). Anhydrides give two bands (~1820 and 1750).',
-  },
-];
+const THEMES = {
+  lab:  { name: 'Lab Green', accent: '#1F7A4D', accentSoft: '#1F7A4D14', dark: false },
+  chem: { name: 'Chem Blue', accent: '#2356C6', accentSoft: '#2356C614', dark: false },
+  dark: { name: 'Fume Hood', accent: '#4ADE80', accentSoft: '#4ADE8020', dark: true  },
+};
 
-const TOPICS = [
-  { id: 'arrow', name: 'Arrow Pushing', n: 24, locked: false, progress: 0.62 },
-  { id: 'retro', name: 'Retrosynthesis', n: 18, locked: false, progress: 0.44 },
-  { id: 'cad',   name: 'Carbonyl Derivatives', n: 32, locked: false, progress: 0.71 },
-  { id: 'spec',  name: 'Spectroscopy', n: 28, locked: false, progress: 0.33 },
-  { id: 'mech',  name: 'Mechanism ID', n: 22, locked: false, progress: 0.55 },
-  { id: 'reag',  name: 'Name the Reagent', n: 40, locked: false, progress: 0.28 },
-];
-
-Object.assign(window, { QUESTIONS, TOPICS });
-
-
-// ═══ app/ChemLab.jsx ═══
-// Desktop ChemLab — split layout: sidebar + question pane + explanation pane.
-// Drag-to-draw arrow pushing on SVG canvas. Keyboard shortcuts 1-4 for MC.
-// ⌘K / Ctrl+K for command palette (topic/mode switcher).
-
-function ChemLab({ theme, setThemeKey, themeKey, themes, density, setDensity }) {
-  const [screen, setScreen] = React.useState('quiz'); // quiz | explanation | done
-  const [qIdx, setQIdx] = React.useState(0);
-  const [selected, setSelected] = React.useState(null);
-  const [submitted, setSubmitted] = React.useState(false);
-  const [wasCorrect, setWasCorrect] = React.useState(false);
-  const [streak, setStreak] = React.useState(14);
-  const [xp, setXp] = React.useState(2840);
-  const [paletteOpen, setPaletteOpen] = React.useState(false);
-  const [dragArrow, setDragArrow] = React.useState(null); // for drag-to-draw
-
-  const quiz = QUESTIONS.slice(0, 6);
-  const q = quiz[qIdx];
-  const ink = '#0E0E0C', bg = '#FAFAF7', muted = 'rgba(14,14,12,0.55)', line = 'rgba(14,14,12,0.08)';
-
-  // keyboard shortcuts
-  React.useEffect(() => {
-    const h = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setPaletteOpen(p => !p);
-        return;
-      }
-      if (paletteOpen) {
-        if (e.key === 'Escape') setPaletteOpen(false);
-        return;
-      }
-      if (screen !== 'quiz' || submitted) return;
-      if (q.type === 'arrow') return; // handled by drag
-      const num = parseInt(e.key, 10);
-      if (num >= 1 && num <= (q.options?.length || 4)) setSelected(num - 1);
-      if (e.key === 'Enter' && selected != null) submit();
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [screen, submitted, selected, q, paletteOpen]);
-
-  React.useEffect(() => {
-    setSelected(null); setSubmitted(false); setDragArrow(null);
-  }, [qIdx]);
-
-  const submit = () => {
-    if (submitted) return;
-    let correct = false;
-    if (q.type === 'arrow') {
-      correct = dragArrow?.correctChoice === true;
-    } else if (q.type === 'nmr') {
-      correct = selected === q.correctPeak;
-    } else {
-      correct = !!q.options?.[selected]?.correct;
-    }
-    setWasCorrect(correct);
-    setSubmitted(true);
-    if (correct) { setStreak(s => s + 1); setXp(x => x + 36); }
-    setTimeout(() => setScreen('explanation'), 400);
+// Design tokens. The light values are the original Retron palette.
+function tokensFor(theme) {
+  return theme.dark ? {
+    ink: '#F5F5F2', bg: '#16160F', muted: 'rgba(245,245,242,0.55)', line: 'rgba(255,255,255,0.09)',
+    card: '#1D1F26', panel: '#181A20', hover: 'rgba(255,255,255,0.06)', ok: '#4ADE80', bad: '#F87171', winBg: '#16160F',
+  } : {
+    ink: '#0E0E0C', bg: '#FAFAF7', muted: 'rgba(14,14,12,0.55)', line: 'rgba(14,14,12,0.08)',
+    card: '#FFFFFF', panel: '#F6F5F0', hover: 'rgba(0,0,0,0.045)', ok: '#16a34a', bad: '#dc2626', winBg: '#FFFFFF',
   };
+}
 
-  const next = () => {
-    const n = qIdx + 1;
-    if (n >= quiz.length) { setScreen('done'); }
-    else { setQIdx(n); setScreen('quiz'); }
+function applyThemeVars(theme) {
+  const root = document.documentElement;
+  const t = tokensFor(theme);
+  root.style.setProperty('--mol-ink', t.ink);
+  root.style.setProperty('--mol-bg', t.card);
+  root.style.setProperty('--mol-muted', theme.dark ? 'rgba(245,245,242,0.5)' : 'rgba(14,14,12,0.5)');
+  root.style.setProperty('--mol-accent', theme.accent);
+  root.style.setProperty('--accent', theme.accent);
+  if (theme.dark) {
+    document.body.style.backgroundImage =
+      'radial-gradient(1000px 700px at 20% 15%, #2a2e38 0%, transparent 55%),' +
+      'radial-gradient(1000px 700px at 85% 70%, #1f2d33 0%, transparent 55%),' +
+      'linear-gradient(135deg, #16181f 0%, #0d1014 100%)';
+  } else {
+    document.body.style.backgroundImage = '';
+  }
+}
+
+// ── small atoms ──
+function Eyebrow({ children, color, style }) {
+  return (
+    <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, fontWeight: 700, textTransform: 'uppercase', color, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function Btn({ t, kind = 'ghost', onClick, disabled, children, style, title }) {
+  const base = {
+    fontFamily: 'inherit', fontSize: 14, fontWeight: 600, borderRadius: 10, cursor: disabled ? 'default' : 'pointer',
+    padding: '11px 20px', border: '1px solid transparent', transition: 'background .12s, border-color .12s', letterSpacing: -0.1,
   };
+  const kinds = {
+    primary: { background: disabled ? t.line : t.ink, color: disabled ? t.muted : t.bg },
+    ghost: { background: t.card, color: t.ink, borderColor: t.line },
+    quiet: { background: 'transparent', color: t.muted, padding: '8px 10px' },
+    danger: { background: t.card, color: t.bad, borderColor: t.bad + '55' },
+  };
+  return <button onClick={disabled ? undefined : onClick} disabled={disabled} title={title} style={{ ...base, ...kinds[kind], ...style }}>{children}</button>;
+}
 
-  const pad = density === 'compact' ? 20 : 32;
+function useWidth() {
+  const [w, setW] = React.useState(typeof window !== 'undefined' ? window.innerWidth : 1400);
+  React.useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return w;
+}
 
-  // ──────── Sidebar ─────────────
-  const sidebar = (
-    <>
-      <MacSidebarHeader title="" />
-      <div style={{ padding: '0 18px 8px' }}>
-        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.4, color: ink }}>Retron</div>
-        <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600, marginTop: 2 }}>
-          ORGO II · ACS PREP
-        </div>
+function fmtDate(ts) {
+  if (!ts) return 'never';
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function pct(x) { return Math.round(x * 100) + '%'; }
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+// ── storage hook: every change is saved immediately ──
+function useRetronData() {
+  const ref = React.useRef(null);
+  if (ref.current === null) ref.current = Store.load();
+  const [data, setData] = React.useState(ref.current);
+  const [saved, setSaved] = React.useState(Store.ok);
+  const update = React.useCallback((fn) => {
+    const next = JSON.parse(JSON.stringify(ref.current));
+    fn(next);
+    ref.current = next;
+    setData(next);
+    setSaved(Store.save(next));
+  }, []);
+  const replace = React.useCallback((next) => {
+    ref.current = next;
+    setData(next);
+    setSaved(Store.save(next));
+  }, []);
+  return { data, update, replace, saved, ref };
+}
+
+// ── window chrome (original look, now fluid) ──
+function CustomMacWindow({ title, children, dark, style }) {
+  return (
+    <div style={{
+      borderRadius: 14, overflow: 'hidden',
+      background: dark ? '#16160F' : '#FFFFFF',
+      boxShadow: '0 0 0 1px rgba(0,0,0,0.2), 0 30px 80px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.15)',
+      display: 'flex', flexDirection: 'column', position: 'relative', ...style,
+    }}>
+      <div style={{
+        height: 38, flexShrink: 0, display: 'flex', alignItems: 'center',
+        padding: '0 14px', gap: 10,
+        background: dark ? 'rgba(32,34,40,0.92)' : 'rgba(245,245,240,0.92)',
+        borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+        position: 'relative', zIndex: 5,
+      }}>
+        <MacTrafficLights />
+        <div style={{
+          flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600,
+          color: dark ? 'rgba(245,245,242,0.85)' : '#0E0E0C', letterSpacing: -0.1,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{title}</div>
+        <div style={{ width: 52 }} />
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', overflow: 'hidden' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── sidebar ──
+function NavItem({ t, theme, active, onClick, label, right, dot = true }) {
+  return (
+    <div role="button" tabIndex={0} onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      style={{
+        margin: '0 10px', padding: '7px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
+        background: active ? theme.accentSoft : 'transparent', cursor: 'pointer',
+      }}>
+      {dot && <div style={{ width: 6, height: 6, borderRadius: 3, background: active ? theme.accent : t.muted, opacity: active ? 1 : 0.4, flexShrink: 0 }} />}
+      <div style={{ flex: 1, fontSize: 12, color: t.ink, fontWeight: active ? 600 : 500 }}>{label}</div>
+      {right != null && <div title="Solid questions out of total" style={{ fontSize: 10, color: t.muted, fontFamily: MONO }}>{right}</div>}
+    </div>
+  );
+}
+
+function SideLabel({ t, children }) {
+  return <div style={{ padding: '14px 18px 5px', fontSize: 11, fontWeight: 700, color: t.muted }}>{children}</div>;
+}
+
+function Sidebar({ t, theme, data, screen, go, setFocus, width }) {
+  const courses = SUBJECTS.filter(s => s.stage !== 'foundation');
+  const countFor = (sid) => { const s = Engine.stats(data, q => q.subject === sid); return s.seen ? `${s.solid}/${s.total}` : `0/${s.total}`; };
+  const onTab = (sc) => screen === sc || (sc === 'home' && (screen === 'session' || screen === 'summary'));
+  return (
+    <div style={{
+      width, flexShrink: 0, height: '100%',
+      background: theme.dark ? 'rgba(30,32,38,0.85)' : 'rgba(240,238,228,0.8)',
+      backdropFilter: 'blur(30px) saturate(180%)', WebkitBackdropFilter: 'blur(30px) saturate(180%)',
+      borderRight: `1px solid ${t.line}`, display: 'flex', flexDirection: 'column', overflow: 'auto',
+    }}>
+      <div style={{ padding: '18px 18px 10px' }}>
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.4, color: t.ink }}>Retron</div>
+        <div style={{ fontSize: 10, letterSpacing: 1.4, color: t.muted, fontFamily: MONO, fontWeight: 600, marginTop: 2 }}>STUDY COMPANION</div>
       </div>
 
-      {/* streak */}
-      <div style={{ margin: '6px 14px 14px', padding: 12, borderRadius: 12, background: '#fff', border: `1px solid ${line}` }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: theme.accent, letterSpacing: -0.8 }}>{streak}</div>
-          <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600 }}>DAY STREAK</div>
-        </div>
-        <div style={{ marginTop: 6, display: 'flex', gap: 3 }}>
-          {Array.from({ length: 14 }, (_, i) => (
-            <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < streak % 14 || streak >= 14 ? theme.accent : line }} />
-          ))}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>
-          LVL 07 · {xp} XP
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+        <NavItem t={t} theme={theme} active={onTab('home')} label="Today" onClick={() => go('home')} />
+        <NavItem t={t} theme={theme} active={onTab('progress')} label="Progress" onClick={() => go('progress')} />
+        <NavItem t={t} theme={theme} active={onTab('backup')} label="Backup" onClick={() => go('backup')} />
       </div>
 
-      <MacSidebarHeader title="TOPICS" />
-      {TOPICS.map((t, i) => (
-        <div key={t.id} style={{
-          margin: '0 10px', padding: '7px 10px', borderRadius: 8,
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: i === 0 ? theme.accentSoft : 'transparent',
-          cursor: 'pointer',
-        }}>
-          <div style={{ width: 6, height: 6, borderRadius: 3, background: i === 0 ? theme.accent : muted, opacity: i === 0 ? 1 : 0.4, flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: 12, color: ink, fontWeight: 500 }}>{t.name}</div>
-          <div style={{ fontSize: 10, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>{Math.round(t.progress * 100)}%</div>
-        </div>
+      <SideLabel t={t}>SPRING 2027</SideLabel>
+      {courses.map(s => (
+        <NavItem key={s.id} t={t} theme={theme} active={data.focus === s.id} label={s.short} right={countFor(s.id)}
+          onClick={() => { setFocus(s.id); go('home'); }} />
       ))}
-
-      <MacSidebarHeader title="MODES" />
-      {['Daily Challenge', 'Quick Quiz · 5Q', 'Study Mode', 'Stats'].map((m, i) => (
-        <div key={m} style={{
-          margin: '0 10px', padding: '6px 10px', borderRadius: 8,
-          fontSize: 12, color: ink, fontWeight: 500,
-          background: i === 0 ? 'rgba(0,0,0,0.06)' : 'transparent',
-        }}>{m}</div>
+      <SideLabel t={t}>FOUNDATIONS</SideLabel>
+      {SUBJECTS.filter(s => s.stage === 'foundation').map(s => (
+        <NavItem key={s.id} t={t} theme={theme} active={data.focus === s.id} label={s.short + ' review'} right={countFor(s.id)}
+          onClick={() => { setFocus(s.id); go('home'); }} />
       ))}
 
       <div style={{ flex: 1 }} />
 
-      {/* Connor profile chip */}
-      <div style={{ margin: '10px 14px', padding: 10, borderRadius: 12, background: 'rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ margin: '10px 14px', padding: 10, borderRadius: 12, background: t.hover, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 32, height: 32, borderRadius: 16, background: theme.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>CR</div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: ink }}>Connor</div>
-          <div style={{ fontSize: 10, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>RUTGERS · SOAS</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: t.ink }}>Connor</div>
+          <div style={{ fontSize: 10, color: t.muted, fontFamily: MONO }}>RUTGERS · SPRING 2027</div>
         </div>
       </div>
-    </>
+    </div>
   );
+}
 
-  // ──────── Main content ─────────────
-  let main;
-  if (screen === 'done') {
-    main = <SessionComplete streak={streak} xpGained={quiz.length * 36} onRestart={() => { setQIdx(0); setScreen('quiz'); }} theme={theme} ink={ink} muted={muted} line={line} />;
-  } else {
-    main = (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 0, height: '100%' }}>
-        {/* LEFT: question */}
-        <div style={{ padding: `${pad}px ${pad}px 0`, overflow: 'auto', borderRight: `1px solid ${line}` }}>
-          {/* topic pill + progress */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{
-              padding: '5px 11px', borderRadius: 6, background: theme.accentSoft, color: theme.accent,
-              fontSize: 10, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, letterSpacing: 1.4,
-            }}>
-              {q.topic.toUpperCase()} · {q.difficulty}
-            </div>
-            <div style={{ flex: 1, height: 3, background: line, borderRadius: 2, overflow: 'hidden', maxWidth: 240 }}>
-              <div style={{ width: `${((qIdx + 1) / quiz.length) * 100}%`, height: '100%', background: theme.accent, transition: 'width 0.3s' }} />
-            </div>
-            <div style={{ fontSize: 11, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600 }}>
-              {qIdx + 1} / {quiz.length}
-            </div>
-          </div>
+function TopNav({ t, theme, screen, go }) {
+  const items = [['home', 'Today'], ['progress', 'Progress'], ['backup', 'Backup']];
+  const on = (sc) => screen === sc || (sc === 'home' && (screen === 'session' || screen === 'summary'));
+  return (
+    <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderBottom: `1px solid ${t.line}`, background: t.panel, flexShrink: 0 }}>
+      {items.map(([id, label]) => (
+        <button key={id} onClick={() => go(id)} style={{
+          flex: 1, padding: '8px 6px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+          background: on(id) ? theme.accentSoft : 'transparent', color: on(id) ? theme.accent : t.muted,
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
 
-          {/* prompt */}
-          <div style={{ fontSize: 24, fontWeight: 600, color: ink, letterSpacing: -0.5, lineHeight: 1.25, marginBottom: 20, textWrap: 'pretty' }}>
-            {q.prompt}
-          </div>
-
-          {/* body */}
-          <DesktopQuestionBody
-            q={q} selected={selected} setSelected={setSelected}
-            submitted={submitted} theme={theme} ink={ink} muted={muted} line={line}
-            dragArrow={dragArrow} setDragArrow={setDragArrow}
-          />
-
-          {/* submit footer */}
-          <div style={{ marginTop: 28, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button
-              onClick={submit}
-              disabled={submitted || (q.type === 'arrow' ? !dragArrow : selected == null)}
-              style={{
-                padding: '12px 28px', borderRadius: 10, border: 'none',
-                background: (q.type === 'arrow' ? dragArrow : selected != null) && !submitted ? ink : line,
-                color: (q.type === 'arrow' ? dragArrow : selected != null) && !submitted ? bg : muted,
-                fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              Check Answer
-            </button>
-            <div style={{ fontSize: 11, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>
-              {q.type === 'arrow' ? 'DRAG FROM SOURCE TO TARGET' : q.type === 'nmr' ? 'CLICK A PEAK' : 'PRESS 1–4 · ENTER TO SUBMIT'}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT: context / explanation */}
-        <div style={{ padding: `${pad}px ${pad}px 0`, overflow: 'auto', background: '#F6F5F0' }}>
-          {!submitted ? (
-            <>
-              <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 12 }}>
-                REFERENCE · NO PEEKING
-              </div>
-              <div style={{ padding: 18, background: '#fff', border: `1px solid ${line}`, borderRadius: 14 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: ink, letterSpacing: -0.2 }}>
-                  {q.topic}
-                </div>
-                <div style={{ fontSize: 12, color: muted, marginTop: 10, lineHeight: 1.5 }}>
-                  The explanation panel reveals after you submit. Commit to an answer first — that's where the learning compounds.
-                </div>
-              </div>
-              <div style={{ marginTop: 20, padding: 18, background: '#fff', border: `1px solid ${line}`, borderRadius: 14 }}>
-                <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 10 }}>
-                  SHORTCUTS
-                </div>
-                {[
-                  ['1 – 4', 'Select answer'],
-                  ['⏎', 'Submit'],
-                  ['⌘ K', 'Command palette'],
-                  ['→', 'Next question'],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
-                    <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, color: ink, background: line, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{k}</kbd>
-                    <span style={{ color: muted }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <ExplanationPanel q={q} correct={wasCorrect} onNext={next} theme={theme} ink={ink} muted={muted} line={line} />
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Sidebar wrapper - uses the same pattern as MacSidebar but inline
-  const sidebarPanel = (
-    <div style={{
-      width: 260, flexShrink: 0, height: '100%',
-      background: theme.dark ? 'rgba(30,32,38,0.85)' : 'rgba(240,238,228,0.8)',
-      backdropFilter: 'blur(30px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(30px) saturate(180%)',
-      borderRight: `1px solid ${line}`,
-      display: 'flex', flexDirection: 'column',
-      overflow: 'auto',
+// ═══ Home: one obvious action, then the subject picker ═══
+function SubjectCard({ t, theme, selected, onClick, title, sub, status, tag }) {
+  return (
+    <button onClick={onClick} aria-pressed={selected} style={{
+      textAlign: 'left', padding: '14px 16px', borderRadius: 14, cursor: 'pointer', fontFamily: 'inherit', color: t.ink,
+      background: selected ? theme.accentSoft : t.card, border: `1.5px solid ${selected ? theme.accent : t.line}`,
+      display: 'flex', flexDirection: 'column', gap: 4, transition: 'border-color .12s, background .12s',
     }}>
-      {sidebar}
-    </div>
-  );
-
-  return (
-    <div style={{ display: 'flex', width: '100%', height: '100%', position: 'relative' }}>
-      {sidebarPanel}
-      <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {main}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
+          width: 14, height: 14, borderRadius: 7, flexShrink: 0,
+          border: `1.5px solid ${selected ? theme.accent : t.muted}`, background: selected ? theme.accent : 'transparent',
+          boxShadow: selected ? `inset 0 0 0 2.5px ${t.card}` : 'none',
+        }} />
+        <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: -0.2, flex: 1 }}>{title}</div>
+        {tag && <Eyebrow color={t.muted} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: t.line }}>{tag}</Eyebrow>}
       </div>
-      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} theme={theme} themes={themes} themeKey={themeKey} setThemeKey={setThemeKey} density={density} setDensity={setDensity} />}
-    </div>
+      {sub && <div style={{ fontSize: 11, color: t.muted, fontFamily: MONO, marginLeft: 22 }}>{sub}</div>}
+      <div style={{ fontSize: 12, color: t.muted, marginLeft: 22, marginTop: 2 }}>{status}</div>
+    </button>
   );
 }
 
-// ═══ Question body — desktop-size rendering ═════════════════════════════
-function DesktopQuestionBody({ q, selected, setSelected, submitted, theme, ink, muted, line, dragArrow, setDragArrow }) {
-  // Render the structure canvas at desktop size
-  const canvasBg = '#fff';
-  if (q.type === 'arrow') {
-    return <DragArrowCanvas q={q} submitted={submitted} theme={theme} ink={ink} muted={muted} line={line} dragArrow={dragArrow} setDragArrow={setDragArrow} />;
+function Home({ t, theme, bp, pad, data, onStart, onResume, setFocus }) {
+  const focus = data.focus;
+  const inFocus = (q) => focus === 'mixed' ? SBY[q.subject].weight > 0 : q.subject === focus;
+  const fs = Engine.stats(data, inFocus);
+  const all = Engine.stats(data, null);
+  const focusName = focus === 'mixed' ? 'All courses' : SBY[focus].name;
+  const a = data.active;
+  const last = data.sessions[0];
+  const credits = SUBJECTS.filter(s => s.stage !== 'foundation').reduce((n, s) => n + s.credits, 0);
+
+  let statusLine;
+  if (!all.n) {
+    statusLine = 'Pick a course or let Retron mix them. Your progress saves automatically.';
+  } else {
+    const gap = last ? Engine.dayNum() - Engine.dayNum(last.t) : 0;
+    const parts = [];
+    if (gap >= 3) parts.push('Welcome back. Nothing is overdue, so we will pick up gently.');
+    else if (last) parts.push(`Last session: ${plural(last.n, 'question')}, ${last.c} right on the first try.`);
+    if (fs.ready > 0) parts.push(`${plural(fs.ready, 'question is', 'questions are')} ready to revisit.`);
+    statusLine = parts.join(' ');
   }
-  if (q.type === 'nmr') {
-    return (
-      <div style={{ background: canvasBg, border: `1px solid ${line}`, borderRadius: 14, padding: 24 }}>
-        <div style={{ position: 'relative' }}>
-          <NMRSpectrum w={600} h={240} peaks={q.peaks} highlight={selected} />
-          <div style={{ position: 'absolute', inset: 0 }}>
-            {q.peaks.map((pk, i) => {
-              const pct = ((10 - pk.shift) / 10) * 100;
-              const isHi = selected === i;
-              const correct = submitted && i === q.correctPeak;
-              const wrong = submitted && isHi && i !== q.correctPeak;
-              return (
-                <button key={i}
-                  onClick={() => !submitted && setSelected(i)}
-                  style={{
-                    position: 'absolute', left: `calc(${pct}% - 26px)`, top: 0, bottom: 56,
-                    width: 52, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-                  }}>
-                  <div style={{
-                    position: 'absolute', inset: 0, borderRadius: 6,
-                    border: isHi ? `2px solid ${correct ? '#16a34a' : wrong ? '#dc2626' : theme.accent}` : '2px dashed transparent',
-                    background: isHi ? (correct ? '#16a34a18' : wrong ? '#dc262618' : theme.accentSoft) : 'transparent',
-                  }} />
-                </button>
-              );
-            })}
+
+  // concepts worth another look: enough attempts, low first-try accuracy
+  const weak = CONCEPTS.filter(c => focus === 'mixed' ? SBY[c.subject].weight > 0 : c.subject === focus).map(c => {
+    const s = Engine.stats(data, q => q.concept === c.id);
+    return { c, s };
+  }).filter(x => x.s.n >= 3 && x.s.acc < 0.6).sort((x, y) => x.s.acc - y.s.acc).slice(0, 2);
+
+  const paused = a ? (a.answers.length >= a.ids.length
+    ? `${MODES[a.mode].name} · ready to finish`
+    : `${MODES[a.mode].name} · question ${a.answers.length + 1} of ${a.ids.length}`) : null;
+
+  const statusOf = (stats, stage) => {
+    if (!stats.seen) return `Not started · ${plural(stats.total, 'question')}`;
+    return `${stats.seen} of ${stats.total} seen · ${stats.solid} solid`;
+  };
+  const courses = SUBJECTS.filter(s => s.stage !== 'foundation');
+  const orgo = SUBJECTS.find(s => s.stage === 'foundation');
+  const mixedStats = Engine.stats(data, q => SBY[q.subject].weight > 0);
+  const gridCols = bp === 'sm' ? '1fr' : 'repeat(2, minmax(0, 1fr))';
+
+  return (
+    <div style={{ padding: `${pad + 8}px ${pad + 8}px 40px`, overflow: 'auto', height: '100%', width: '100%' }}>
+      <div style={{ maxWidth: 940, margin: '0 auto' }}>
+        <Eyebrow color={theme.accent} style={{ marginBottom: 12 }}>SPRING 2027 · {credits} CREDITS</Eyebrow>
+        <div style={{ fontSize: bp === 'sm' ? 32 : 44, fontWeight: 700, color: t.ink, letterSpacing: -1.2, lineHeight: 1.05 }}>
+          Ready when you are, Connor.
+        </div>
+        <div style={{ marginTop: 12, fontSize: 15, color: t.muted, lineHeight: 1.5, maxWidth: 620, textWrap: 'pretty' }}>{statusLine}</div>
+
+        {/* the one obvious action */}
+        <button onClick={a ? onResume : () => onStart('daily')} style={{
+          marginTop: 26, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 16,
+          padding: '20px 24px', borderRadius: 16, border: 'none', background: t.ink, color: t.bg, cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.4 }}>{a ? 'Pick up where you left off' : 'Start Daily Review'}</div>
+            <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>
+              {a ? paused : `5 questions · about 5–7 min · ${focusName}`}
+            </div>
           </div>
+          <div style={{ fontSize: 24 }}>→</div>
+        </button>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+          {a && <Btn t={t} onClick={() => onStart('daily')} style={{ flex: '1 1 160px' }}>New Daily Review<span style={{ color: t.muted, fontWeight: 500 }}> · 5 Q</span></Btn>}
+          <Btn t={t} onClick={() => onStart('warm')} style={{ flex: '1 1 160px' }}>Quick Warm-Up<span style={{ color: t.muted, fontWeight: 500 }}> · ~2 min</span></Btn>
+          <Btn t={t} onClick={() => onStart('deep')} style={{ flex: '1 1 160px' }}>Deep Practice<span style={{ color: t.muted, fontWeight: 500 }}> · ~15 min</span></Btn>
+        </div>
+        {a && <div style={{ marginTop: 8, fontSize: 12, color: t.muted }}>Starting a new session replaces the paused one. Answers you already gave are saved either way.</div>}
+        <div style={{ marginTop: a ? 4 : 10, fontSize: 12, color: t.muted }}>Session lengths are targets, not timers. Stop whenever you like.</div>
+
+        {weak.length > 0 && (
+          <div style={{ marginTop: 22, padding: '12px 16px', borderRadius: 12, background: t.card, border: `1px solid ${t.line}`, display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <Eyebrow color={t.muted}>WORTH ANOTHER LOOK</Eyebrow>
+            <div style={{ fontSize: 13, color: t.ink }}>{weak.map(x => x.c.name).join(' · ')}</div>
+          </div>
+        )}
+
+        {/* subject picker */}
+        <div style={{ marginTop: 34, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: t.ink, letterSpacing: -0.3 }}>What are we studying?</div>
+          <div style={{ fontSize: 12, color: t.muted }}>Mixed is a good default. General Biochemistry and Food Microbiology get the most attention.</div>
+        </div>
+        <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: gridCols, gap: 10 }}>
+          <SubjectCard t={t} theme={theme} selected={focus === 'mixed'} onClick={() => setFocus('mixed')}
+            title="Mix of all courses" sub="RECOMMENDED" status={statusOf(mixedStats)} />
+          {courses.map(s => (
+            <SubjectCard key={s.id} t={t} theme={theme} selected={focus === s.id} onClick={() => setFocus(s.id)}
+              title={s.name} sub={`${s.code} · ${s.credits} CREDITS`} status={statusOf(Engine.stats(data, q => q.subject === s.id))}
+              tag={s.stage === 'starter' ? 'STARTER SET' : null} />
+          ))}
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <Eyebrow color={t.muted} style={{ marginBottom: 8 }}>FOUNDATIONS</Eyebrow>
+          <SubjectCard t={t} theme={theme} selected={focus === orgo.id} onClick={() => setFocus(orgo.id)}
+            title={orgo.name} sub="OPTIONAL REFRESHER" status={statusOf(Engine.stats(data, q => q.subject === orgo.id))} />
+        </div>
+        <div style={{ marginTop: 22, fontSize: 12, color: t.muted, lineHeight: 1.5 }}>
+          Starter sets are short, general introductions. Content will be matched to the official syllabi once you have them.
         </div>
       </div>
-    );
-  }
-  // MC variants
-  return (
-    <div>
-      {q.reactant && <ReactantPreview q={q} line={line} ink={ink} muted={muted} />}
-      <div style={{ display: 'grid', gap: 10 }}>
-        {q.options.map((opt, i) => {
-          const letter = String.fromCharCode(65 + i);
-          const isSel = selected === i;
-          const ok = submitted && opt.correct;
-          const bad = submitted && isSel && !opt.correct;
-          let borderColor = line, bgColor = '#fff';
-          if (ok) { borderColor = '#16a34a'; bgColor = '#16a34a0f'; }
-          else if (bad) { borderColor = '#dc2626'; bgColor = '#dc26260f'; }
-          else if (isSel) { borderColor = ink; }
-          return (
-            <button key={i} onClick={() => !submitted && setSelected(i)}
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: 14,
-                padding: '14px 16px', background: bgColor,
-                border: `1.5px solid ${borderColor}`, borderRadius: 12,
-                cursor: submitted ? 'default' : 'pointer', textAlign: 'left',
-                fontFamily: 'inherit', color: ink, width: '100%',
-                transition: 'all 0.12s',
-              }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                border: `1.5px solid ${isSel || ok ? ink : line}`,
-                background: isSel || ok ? ink : 'transparent', color: '#FAFAF7',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, fontWeight: 700, fontFamily: '"JetBrains Mono", ui-monospace',
-              }}>{letter}</div>
-              <div style={{ flex: 1, paddingTop: 3 }}>
-                <div style={{ fontSize: 15, letterSpacing: -0.2, lineHeight: 1.4 }}>{opt.label}</div>
-                {opt.detail && <div style={{ fontSize: 12, color: muted, marginTop: 3, fontFamily: '"JetBrains Mono", ui-monospace' }}>{opt.detail}</div>}
-              </div>
-              <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, color: muted, background: line, padding: '3px 8px', borderRadius: 4, fontSize: 10, marginTop: 3 }}>{i + 1}</kbd>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
 
-function ReactantPreview({ q, line, ink, muted }) {
+// ═══ app/retron-app.jsx · part 2: session, summary, progress, backup, palette, root ═══
+
+// ── question visuals carried over from the original Retron ──
+function ReactantPreview({ q, t }) {
   return (
-    <div style={{ background: '#fff', border: `1px solid ${line}`, borderRadius: 14, padding: 24, marginBottom: 20 }}>
-      <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 14 }}>
-        REACTION
-      </div>
+    <div style={{ background: t.card, border: `1px solid ${t.line}`, borderRadius: 14, padding: 24, marginBottom: 20 }}>
+      <Eyebrow color={t.muted} style={{ marginBottom: 14 }}>REACTION</Eyebrow>
       <svg width="100%" height="130" viewBox="0 0 520 130">
         {q.reactant === 'EthylAcetate' && (
           <>
@@ -1136,374 +1926,813 @@ function ReactantPreview({ q, line, ink, muted }) {
   );
 }
 
-function DragArrowCanvas({ q, submitted, theme, ink, muted, line, dragArrow, setDragArrow }) {
+// Drag from electron source to target, or pick the starting point from the list.
+function DragArrowCanvas({ q, t, theme, submitted, arrow, setArrow }) {
   const svgRef = React.useRef(null);
-  const [drag, setDrag] = React.useState(null); // { from: [x,y], to: [x,y] }
+  const [drag, setDrag] = React.useState(null);
+  const VB_W = 600, VB_H = 260;
 
   const getPt = (e) => {
-    const svg = svgRef.current;
-    const rect = svg.getBoundingClientRect();
-    const vbW = 600, vbH = 260;
-    const x = ((e.clientX - rect.left) / rect.width) * vbW;
-    const y = ((e.clientY - rect.top) / rect.height) * vbH;
-    return [x, y];
+    const rect = svgRef.current.getBoundingClientRect();
+    return [((e.clientX - rect.left) / rect.width) * VB_W, ((e.clientY - rect.top) / rect.height) * VB_H];
   };
-
+  const dist2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
+  // The starting point matters most, so it is weighted double.
+  const grade = (from, to) => {
+    const best = q.arrowChoices.map(c => ({ c, s: 2 * dist2(from, c.from) + dist2(to, c.to) })).sort((x, y) => x.s - y.s)[0].c;
+    return { from, to, correctChoice: !!best.correct, matchedId: best.id };
+  };
   const onDown = (e) => {
     if (submitted) return;
-    const p = getPt(e);
-    setDrag({ from: p, to: p });
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    const p = getPt(e); setDrag({ from: p, to: p });
   };
-  const onMove = (e) => {
-    if (!drag || submitted) return;
-    setDrag(d => ({ ...d, to: getPt(e) }));
-  };
+  const onMove = (e) => { if (drag && !submitted) setDrag(d => ({ ...d, to: getPt(e) })); };
   const onUp = () => {
     if (!drag || submitted) return;
-    // find closest choice by comparing start to each choice.from and end to choice.to
-    const dist2 = (a, b) => (a[0]-b[0])**2 + (a[1]-b[1])**2;
-    const scaled = q.arrowChoices.map(c => ({
-      ...c,
-      // scale choice coords from 300x120 into 600x260
-      scFrom: [c.from[0] * 2, c.from[1] * 2.17],
-      scTo: [c.to[0] * 2, c.to[1] * 2.17],
-    }));
-    const best = scaled.map(c => ({
-      c,
-      score: dist2(drag.from, c.scFrom) + dist2(drag.to, c.scTo),
-    })).sort((a, b) => a.score - b.score)[0];
-    setDragArrow({ from: drag.from, to: drag.to, correctChoice: best.c.correct, matchedId: best.c.id });
+    const moved = dist2(drag.from, drag.to) > 400;
+    if (moved) setArrow(grade(drag.from, drag.to));
     setDrag(null);
   };
+  const curve = (a) => ({ from: a.from, to: a.to, ctrl: [(a.from[0] + a.to[0]) / 2, Math.min(a.from[1], a.to[1]) - 40] });
+  const correct = q.arrowChoices.find(c => c.correct);
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${line}`, borderRadius: 14, padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-        <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700 }}>
-          STEP 1 · FISCHER ESTERIFICATION
-        </div>
-        <div style={{ fontSize: 11, color: theme.accent, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600 }}>
-          DRAG FROM ELECTRON SOURCE TO TARGET
-        </div>
+    <div style={{ background: t.card, border: `1px solid ${t.line}`, borderRadius: 14, padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, gap: 12, flexWrap: 'wrap' }}>
+        <Eyebrow color={t.muted}>STEP 1 · FISCHER ESTERIFICATION</Eyebrow>
+        {!submitted && <Eyebrow color={theme.accent} style={{ fontWeight: 600 }}>DRAG FROM ELECTRON SOURCE TO TARGET</Eyebrow>}
       </div>
-      <svg
-        ref={svgRef}
-        width="100%" height="260" viewBox="0 0 600 260"
-        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-        style={{ cursor: submitted ? 'default' : 'crosshair', userSelect: 'none' }}
-      >
-        {/* propanoic acid, scaled up */}
+      <svg ref={svgRef} width="100%" viewBox={`0 0 ${VB_W} ${VB_H}`}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+        style={{ cursor: submitted ? 'default' : 'crosshair', userSelect: 'none', touchAction: 'none', display: 'block', maxHeight: 260 }}>
         <g transform="translate(80,100) scale(2.2)"><PropanoicAcid x={0} y={0} /></g>
-        {/* H+ */}
-        <text x={420} y={100} fill={ink} style={{ font: '700 20px "JetBrains Mono", ui-monospace' }}>H</text>
+        <text x={420} y={100} fill={t.ink} style={{ font: '700 20px "JetBrains Mono", ui-monospace' }}>H</text>
         <circle cx={444} cy={92} r={10} fill="none" stroke={theme.accent} strokeWidth={1.5} />
         <text x={444} y={97} textAnchor="middle" style={{ font: '700 12px system-ui' }} fill={theme.accent}>+</text>
-        {/* live drag preview */}
-        {drag && (() => {
-          const mid = [(drag.from[0]+drag.to[0])/2, Math.min(drag.from[1], drag.to[1]) - 30];
-          return <CurvedArrow from={drag.from} to={drag.to} ctrl={mid} color={theme.accent} active />;
+        {drag && (() => { const c = curve(drag); return <CurvedArrow from={c.from} to={c.to} ctrl={c.ctrl} color={theme.accent} active />; })()}
+        {arrow && !drag && (() => {
+          const c = curve(arrow);
+          const color = submitted ? (arrow.correctChoice ? t.ok : t.bad) : theme.accent;
+          return <CurvedArrow from={c.from} to={c.to} ctrl={c.ctrl} color={color} active />;
         })()}
-        {/* committed arrow */}
-        {dragArrow && (() => {
-          const mid = [(dragArrow.from[0]+dragArrow.to[0])/2, Math.min(dragArrow.from[1], dragArrow.to[1]) - 30];
-          const color = submitted
-            ? (dragArrow.correctChoice ? '#16a34a' : '#dc2626')
-            : theme.accent;
-          return <CurvedArrow from={dragArrow.from} to={dragArrow.to} ctrl={mid} color={color} active />;
-        })()}
+        {submitted && arrow && !arrow.correctChoice && (() => { const c = curve(correct); return <g opacity="0.85"><CurvedArrow from={c.from} to={c.to} ctrl={c.ctrl} color={t.ok} /></g>; })()}
       </svg>
-      {dragArrow && !submitted && (
-        <div style={{ marginTop: 10, fontSize: 12, color: muted, fontFamily: '"JetBrains Mono", ui-monospace' }}>
-          ARROW DRAWN. CLICK TO REDO OR CHECK ANSWER.
+      {!submitted && (
+        <div style={{ marginTop: 12 }}>
+          <Eyebrow color={t.muted} style={{ marginBottom: 8 }}>OR PICK WHERE THE ARROW STARTS</Eyebrow>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {q.arrowChoices.map(c => {
+              const on = arrow && arrow.matchedId === c.id && arrow.picked;
+              return (
+                <button key={c.id} onClick={() => setArrow({ from: c.from, to: c.to, correctChoice: !!c.correct, matchedId: c.id, picked: true })}
+                  style={{
+                    padding: '7px 12px', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', color: t.ink,
+                    border: `1.5px solid ${on ? t.ink : t.line}`, background: on ? t.hover : t.card,
+                  }}>{c.label}</button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ═══ Explanation panel ═════════════════════════════════════════════════
-function ExplanationPanel({ q, correct, onNext, theme, ink, muted, line }) {
-  const resultColor = correct ? '#16a34a' : '#dc2626';
+function QuestionBody({ q, t, theme, order, shown, setShown, submitted, arrow, setArrow }) {
+  if (q.type === 'arrow') return <DragArrowCanvas q={q} t={t} theme={theme} submitted={submitted} arrow={arrow} setArrow={setArrow} />;
+  if (q.type === 'nmr') {
+    return (
+      <div style={{ background: t.card, border: `1px solid ${t.line}`, borderRadius: 14, padding: 24, overflowX: 'auto' }}>
+        <div style={{ position: 'relative', width: 600, maxWidth: '100%' }}>
+          <NMRSpectrum w={600} h={240} peaks={q.peaks} highlight={shown} />
+          <div style={{ position: 'absolute', inset: 0 }}>
+            {q.peaks.map((pk, i) => {
+              const p = ((10 - pk.shift) / 10) * 100;
+              const isHi = shown === i;
+              const right = submitted && i === q.correctPeak;
+              const wrong = submitted && isHi && i !== q.correctPeak;
+              return (
+                <button key={i} aria-label={`Peak at ${pk.shift} ppm`} onClick={() => !submitted && setShown(i)}
+                  style={{ position: 'absolute', left: `calc(${p}% - 26px)`, top: 0, bottom: 56, width: 52, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}>
+                  <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 6,
+                    border: (isHi || right) ? `2px solid ${right ? t.ok : wrong ? t.bad : theme.accent}` : '2px dashed transparent',
+                    background: (isHi || right) ? (right ? t.ok + '18' : wrong ? t.bad + '18' : theme.accentSoft) : 'transparent',
+                  }} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 20, background: resultColor,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontSize: 20, fontWeight: 700,
-        }}>
-          {correct ? '✓' : '✕'}
-        </div>
-        <div>
-          <div style={{ fontSize: 10, letterSpacing: 1.4, color: resultColor, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700 }}>
-            {correct ? 'CORRECT' : 'INCORRECT'}
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: ink, letterSpacing: -0.3, marginTop: 2 }}>
-            {correct ? 'Nice mechanism.' : 'Review this.'}
-          </div>
-        </div>
+      {q.reactant && <ReactantPreview q={q} t={t} />}
+      <div style={{ display: 'grid', gap: 10 }}>
+        {order.map((oi, i) => {
+          const opt = q.options[oi];
+          const isSel = shown === i;
+          const ok = submitted && opt.correct;
+          const bad = submitted && isSel && !opt.correct;
+          let borderColor = t.line, bgColor = t.card;
+          if (ok) { borderColor = t.ok; bgColor = t.ok + '0f'; }
+          else if (bad) { borderColor = t.bad; bgColor = t.bad + '0f'; }
+          else if (isSel) { borderColor = t.ink; }
+          return (
+            <button key={oi} onClick={() => !submitted && setShown(i)} aria-pressed={isSel}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', background: bgColor,
+                border: `1.5px solid ${borderColor}`, borderRadius: 12, cursor: submitted ? 'default' : 'pointer',
+                textAlign: 'left', fontFamily: 'inherit', color: t.ink, width: '100%', transition: 'border-color .12s, background .12s',
+              }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                border: `1.5px solid ${isSel || ok ? t.ink : t.line}`, background: isSel || ok ? t.ink : 'transparent', color: isSel || ok ? t.bg : t.muted,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, fontFamily: MONO,
+              }}>{String.fromCharCode(65 + i)}</div>
+              <div style={{ flex: 1, paddingTop: 3 }}>
+                <div style={{ fontSize: 15, letterSpacing: -0.2, lineHeight: 1.45 }}>{opt.label}</div>
+                {opt.detail && <div style={{ fontSize: 12, color: t.muted, marginTop: 3, fontFamily: MONO }}>{opt.detail}</div>}
+              </div>
+              <kbd style={{ fontFamily: MONO, fontWeight: 700, color: t.muted, background: t.line, padding: '3px 8px', borderRadius: 4, fontSize: 10, marginTop: 3 }}>{i + 1}</kbd>
+            </button>
+          );
+        })}
       </div>
-
-      {correct && (
-        <div style={{ display: 'flex', gap: 14, marginBottom: 18, fontSize: 11, fontFamily: '"JetBrains Mono", ui-monospace' }}>
-          <div style={{ padding: '6px 10px', background: '#fff', border: `1px solid ${line}`, borderRadius: 6 }}>
-            <span style={{ color: muted }}>XP </span><span style={{ color: theme.accent, fontWeight: 700 }}>+36</span>
-          </div>
-          <div style={{ padding: '6px 10px', background: '#fff', border: `1px solid ${line}`, borderRadius: 6 }}>
-            <span style={{ color: muted }}>STREAK </span><span style={{ color: ink, fontWeight: 700 }}>+1</span>
-          </div>
-        </div>
-      )}
-
-      <div style={{ padding: 18, background: '#fff', border: `1px solid ${line}`, borderRadius: 14 }}>
-        <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 10 }}>
-          WHY
-        </div>
-        <div style={{ fontSize: 14, lineHeight: 1.55, color: ink, letterSpacing: -0.1, textWrap: 'pretty' }}>
-          {q.explanation}
-        </div>
-      </div>
-
-      {!correct && q.options && (
-        <div style={{ marginTop: 14, padding: 14, background: '#16a34a0f', border: '1px solid #16a34a40', borderRadius: 12 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1.4, color: '#15803d', fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700 }}>
-            CORRECT ANSWER
-          </div>
-          <div style={{ fontSize: 14, color: ink, marginTop: 4, letterSpacing: -0.1 }}>
-            {q.options.find(o => o.correct)?.label}
-          </div>
-        </div>
-      )}
-
-      <button onClick={onNext}
-        style={{
-          marginTop: 20, width: '100%', padding: '14px', borderRadius: 10, border: 'none',
-          background: ink, color: '#FAFAF7', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-        }}>
-        Next Question
-        <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, background: 'rgba(255,255,255,0.15)', padding: '2px 7px', borderRadius: 4, fontSize: 11 }}>→</kbd>
-      </button>
     </div>
   );
 }
 
-// ═══ Session complete ═════════════════════════════════════════════════
-function SessionComplete({ streak, xpGained, onRestart, theme, ink, muted, line }) {
+// ── feedback: short answer first, depth on request ──
+function ExplainPanel({ q, t, theme, done, order, record, isLast, retry, flagged, onToggleFlag, onNext }) {
+  const ok = done.ok;
+  const color = ok ? t.ok : t.bad;
+  const title = ok ? 'Clean reaction.' : done.ns ? 'No problem. Here is the idea.' : 'Not quite. Here is why.';
+  const label = ok ? 'CORRECT' : done.ns ? 'NOT SURE' : 'NOT YET';
+  const today = Engine.dayNum();
+  let next = null;
+  if (retry) next = 'Practice only. This retry is not counted in your progress.';
+  else if (!ok) next = 'You will see this one again tomorrow.';
+  else if (record && record.due != null && record.due > today) {
+    const d = record.due - today;
+    next = `Next check-in: ${d === 1 ? 'tomorrow' : 'in ' + d + ' days'}.`;
+  }
+  const picked = q.type === 'mc' && done.sel != null ? q.options[done.sel] : null;
+  const others = q.type === 'mc' ? q.options.filter(o => !o.correct && o !== picked && o.why) : [];
+  const rightOpt = q.type === 'mc' ? q.options.find(o => o.correct) : null;
+  const arrowRight = q.type === 'arrow' ? q.arrowChoices.find(c => c.correct) : null;
+  const arrowMine = q.type === 'arrow' && done.matchedId ? q.arrowChoices.find(c => c.id === done.matchedId) : null;
+  const hasMore = !!q.more || others.length > 0 || (ok && q.type === 'mc' && others.length);
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 40 }}>
-      <div style={{ maxWidth: 460, textAlign: 'center' }}>
-        <div style={{ fontSize: 10, letterSpacing: 1.6, color: theme.accent, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, marginBottom: 14 }}>
-          QUIZ COMPLETE
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 20, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.bg === '#16160F' ? '#0d1014' : '#fff', fontSize: 20, fontWeight: 700 }}>
+          {ok ? '✓' : '✕'}
         </div>
-        <div style={{ fontSize: 48, fontWeight: 700, color: ink, letterSpacing: -1.2, lineHeight: 1.05 }}>
-          Clean reaction, Connor.
+        <div>
+          <Eyebrow color={color}>{label}</Eyebrow>
+          <div style={{ fontSize: 18, fontWeight: 700, color: t.ink, letterSpacing: -0.3, marginTop: 2 }}>{title}</div>
         </div>
-        <div style={{ marginTop: 30, padding: 24, background: '#fff', border: `1px solid ${line}`, borderRadius: 16, display: 'flex', justifyContent: 'space-around' }}>
-          <div>
-            <div style={{ fontSize: 36, fontWeight: 700, color: theme.accent, letterSpacing: -0.8 }}>+{xpGained}</div>
-            <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600, marginTop: 2 }}>XP EARNED</div>
+      </div>
+
+      <div style={{ padding: 18, background: t.card, border: `1px solid ${t.line}`, borderRadius: 14 }}>
+        <Eyebrow color={t.muted} style={{ marginBottom: 10 }}>IN SHORT</Eyebrow>
+        <div style={{ fontSize: 14, lineHeight: 1.6, color: t.ink, letterSpacing: -0.1, textWrap: 'pretty' }}>{q.explain}</div>
+      </div>
+
+      {!ok && picked && picked.why && (
+        <div style={{ marginTop: 12, padding: 14, background: t.bad + '0d', border: `1px solid ${t.bad}40`, borderRadius: 12 }}>
+          <Eyebrow color={t.bad}>WHY YOUR ANSWER DOES NOT WORK</Eyebrow>
+          <div style={{ fontSize: 13, color: t.muted, marginTop: 6 }}>{picked.label}</div>
+          <div style={{ fontSize: 14, color: t.ink, marginTop: 6, lineHeight: 1.55 }}>{picked.why}</div>
+        </div>
+      )}
+      {!ok && arrowMine && arrowRight && (
+        <div style={{ marginTop: 12, padding: 14, background: t.bad + '0d', border: `1px solid ${t.bad}40`, borderRadius: 12 }}>
+          <Eyebrow color={t.bad}>YOUR ARROW</Eyebrow>
+          <div style={{ fontSize: 14, color: t.ink, marginTop: 6 }}>{arrowMine.label}</div>
+        </div>
+      )}
+      {!ok && (rightOpt || arrowRight || q.type === 'nmr') && (
+        <div style={{ marginTop: 12, padding: 14, background: t.ok + '0f', border: `1px solid ${t.ok}40`, borderRadius: 12 }}>
+          <Eyebrow color={t.ok}>CORRECT ANSWER</Eyebrow>
+          <div style={{ fontSize: 14, color: t.ink, marginTop: 6, lineHeight: 1.5 }}>
+            {rightOpt ? rightOpt.label : arrowRight ? arrowRight.label : `The quartet at δ ${q.peaks[q.correctPeak].shift}`}
           </div>
-          <div>
-            <div style={{ fontSize: 36, fontWeight: 700, color: ink, letterSpacing: -0.8 }}>{streak}</div>
-            <div style={{ fontSize: 10, letterSpacing: 1.4, color: muted, fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 600, marginTop: 2 }}>DAY STREAK</div>
-          </div>
         </div>
-        <button onClick={onRestart}
-          style={{
-            marginTop: 24, padding: '12px 28px', borderRadius: 10, border: 'none',
-            background: ink, color: '#FAFAF7', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-          }}>
-          Another round →
+      )}
+
+      {hasMore && (
+        <details style={{ marginTop: 12, padding: '12px 14px', background: t.card, border: `1px solid ${t.line}`, borderRadius: 12 }}>
+          <summary style={{ cursor: 'pointer', fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, fontWeight: 700, color: t.muted }}>MORE DETAIL</summary>
+          <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: t.ink }}>
+            {q.more && <div style={{ marginBottom: others.length ? 12 : 0 }}>{q.more}</div>}
+            {others.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, color: t.muted, marginBottom: 6 }}>{ok ? 'Why the other options do not work' : 'The other options'}</div>
+                {others.map((o, i) => (
+                  <div key={i} style={{ padding: '8px 0', borderTop: i ? `1px solid ${t.line}` : 'none' }}>
+                    <div style={{ fontWeight: 600 }}>{o.label}</div>
+                    <div style={{ color: t.muted, marginTop: 2 }}>{o.why}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+
+      {next && <div style={{ marginTop: 14, fontSize: 11, color: t.muted, fontFamily: MONO, letterSpacing: 0.4 }}>{next}</div>}
+
+      <button onClick={onNext} style={{
+        marginTop: 16, width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: t.ink, color: t.bg,
+        fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+      }}>
+        {isLast ? 'See summary' : 'Next question'}
+        <kbd style={{ fontFamily: MONO, fontWeight: 700, background: 'rgba(128,128,128,0.25)', padding: '2px 7px', borderRadius: 4, fontSize: 11 }}>→</kbd>
+      </button>
+      <div style={{ marginTop: 12, textAlign: 'center' }}>
+        <button onClick={onToggleFlag} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: t.muted, fontFamily: 'inherit', textDecoration: 'underline' }}>
+          {flagged ? 'Flagged for review. Click to undo.' : 'Flag this question as unclear or wrong'}
         </button>
       </div>
     </div>
   );
 }
 
-// ═══ Command palette ══════════════════════════════════════════════════
-function CommandPalette({ onClose, theme, themes, themeKey, setThemeKey, density, setDensity }) {
-  const ink = '#0E0E0C', muted = 'rgba(14,14,12,0.55)', line = 'rgba(14,14,12,0.08)';
-  const items = [
-    ...Object.entries(themes).map(([k, t]) => ({
-      label: `Theme: ${t.name}`,
-      kbd: themeKey === k ? '●' : '',
-      action: () => { setThemeKey(k); onClose(); },
-    })),
-    { label: `Density: ${density === 'comfy' ? 'Switch to compact' : 'Switch to comfy'}`, action: () => { setDensity(d => d === 'comfy' ? 'compact' : 'comfy'); onClose(); } },
-    { label: 'Jump to topic: Arrow Pushing', action: onClose },
-    { label: 'Jump to topic: Retrosynthesis', action: onClose },
-    { label: 'Start Daily Challenge', action: onClose },
-    { label: 'Open Study Mode', action: onClose },
-  ];
-  return (
-    <div onClick={onClose} style={{
-      position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      paddingTop: 140, zIndex: 200, backdropFilter: 'blur(4px)',
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: 560, background: '#fff', borderRadius: 14,
-        boxShadow: '0 30px 80px rgba(0,0,0,0.25)', overflow: 'hidden',
-      }}>
-        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.5" stroke={muted} strokeWidth="1.5" fill="none"/><path d="M9.5 9.5L13 13" stroke={muted} strokeWidth="1.5" strokeLinecap="round"/></svg>
-          <div style={{ fontSize: 14, color: muted }}>Type a command…</div>
-          <div style={{ flex: 1 }} />
-          <kbd style={{ fontFamily: '"JetBrains Mono", ui-monospace', fontWeight: 700, color: muted, background: line, padding: '3px 8px', borderRadius: 4, fontSize: 10 }}>ESC</kbd>
-        </div>
-        {items.map((it, i) => (
-          <div key={i} onClick={it.action}
-            style={{
-              padding: '12px 18px', fontSize: 13, color: ink, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              borderBottom: i < items.length - 1 ? `1px solid ${line}` : 'none',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = theme.accentSoft}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            {it.label}
-            {it.kbd && <span style={{ color: theme.accent, fontWeight: 700 }}>{it.kbd}</span>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+function SessionView({ t, theme, bp, pad, data, blocked, onAnswer, onNext, onPause, onToggleFlag }) {
+  const a = data.active;
+  const q = QBY[a.ids[a.i]];
+  const done = a.answers[a.i] || null;
+  const submitted = !!done;
+  const order = (a.orders && a.orders[q.id]) || Engine.optionOrder(q, 'fallback');
+  const [sel, setSel] = React.useState(null);
+  const [arrow, setArrow] = React.useState(null);
+  const rightRef = React.useRef(null);
+  React.useEffect(() => { setSel(null); setArrow(null); }, [a.i, q.id]);
 
-Object.assign(window, { ChemLab });
-
-
-// ═══ app/DesktopRoot.jsx ═══
-const TWEAK_DEFAULS = /*EDITMODE-BEGIN*/{
-  "theme": "lab",
-  "density": "compact"
-}/*EDITMODE-END*/;
-
-const THEMES = {
-  lab:  { name: 'Lab Green', accent: '#1F7A4D', accentSoft: '#1F7A4D14', dark: false },
-  chem: { name: 'Chem Blue', accent: '#2356C6', accentSoft: '#2356C614', dark: false },
-  dark: { name: 'Fume Hood', accent: '#4ADE80', accentSoft: '#4ADE8020', dark: true  },
-};
-
-function applyThemeVars(theme) {
-  const root = document.documentElement;
-  root.style.setProperty('--mol-ink', theme.dark ? '#F5F5F2' : '#0E0E0C');
-  root.style.setProperty('--mol-bg',  theme.dark ? '#16160F' : '#FFFFFF');
-  root.style.setProperty('--mol-muted', theme.dark ? 'rgba(245,245,242,0.5)' : 'rgba(14,14,12,0.5)');
-  root.style.setProperty('--mol-accent', theme.accent);
-  root.style.setProperty('--accent', theme.accent);
-  if (theme.dark) {
-    document.body.style.backgroundImage =
-      'radial-gradient(1000px 700px at 20% 15%, #2a2e38 0%, transparent 55%),' +
-      'radial-gradient(1000px 700px at 85% 70%, #1f2d33 0%, transparent 55%),' +
-      'linear-gradient(135deg, #16181f 0%, #0d1014 100%)';
-  } else {
-    document.body.style.backgroundImage = '';
+  let shown = sel, shownArrow = arrow;
+  if (done) {
+    shown = q.type === 'mc' ? (done.sel == null ? null : order.indexOf(done.sel)) : done.sel;
+    if (q.type === 'arrow' && done.arrow) {
+      const c = q.arrowChoices.find(x => x.id === done.matchedId);
+      shownArrow = { from: done.arrow.from, to: done.arrow.to, correctChoice: !!(c && c.correct), matchedId: done.matchedId };
+    } else if (q.type === 'arrow') shownArrow = null;
   }
-}
+  const canSubmit = q.type === 'arrow' ? !!arrow : sel != null;
+  const isLast = a.i + 1 >= a.ids.length;
+  const retry = a.mode === 'retry';
 
-function CustomMacWindow({ width, height, title, children, dark }) {
+  const submit = (notSure) => {
+    if (submitted) return;
+    if (!notSure && !canSubmit) return;
+    let ok = false, selVal = null, matched = null, arrowPts = null;
+    if (!notSure) {
+      if (q.type === 'arrow') { ok = arrow.correctChoice; matched = arrow.matchedId; arrowPts = { from: arrow.from, to: arrow.to }; }
+      else if (q.type === 'nmr') { selVal = sel; ok = sel === q.correctPeak; }
+      else { selVal = order[sel]; ok = !!q.options[selVal].correct; }
+    }
+    onAnswer({ id: q.id, ok, sel: selVal, ns: !!notSure, matchedId: matched, arrow: arrowPts });
+  };
+
+  React.useEffect(() => {
+    if (submitted && rightRef.current && bp !== 'lg' && rightRef.current.scrollIntoView) {
+      try { rightRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ }
+    }
+  }, [submitted]);
+
+  React.useEffect(() => {
+    const h = (e) => {
+      if (blocked || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = e.target && e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (submitted) { if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); onNext(); } return; }
+      if (q.type === 'mc') { const n = parseInt(e.key, 10); if (n >= 1 && n <= order.length) setSel(n - 1); }
+      if (e.key === 'Enter' && canSubmit) { e.preventDefault(); submit(false); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+
+  const concept = CBY[q.concept];
+  const mode = MODES[a.mode];
+  const subjName = a.subject === 'mixed' ? 'All courses' : SBY[a.subject] ? SBY[a.subject].short : '';
+  const stacked = bp !== 'lg';
+  const hint = q.type === 'arrow' ? 'DRAG, OR PICK AN OPTION' : q.type === 'nmr' ? 'CLICK A PEAK' : 'PRESS 1–4 · ENTER TO CHECK';
+
   return (
-    <div style={{
-      width, height, borderRadius: 14, overflow: 'hidden',
-      background: dark ? '#16160F' : '#FFFFFF',
-      boxShadow: '0 0 0 1px rgba(0,0,0,0.2), 0 30px 80px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.15)',
-      display: 'flex', flexDirection: 'column', position: 'relative',
-    }}>
-      <div style={{
-        height: 38, flexShrink: 0, display: 'flex', alignItems: 'center',
-        padding: '0 14px', gap: 10,
-        background: dark ? 'rgba(32,34,40,0.92)' : 'rgba(245,245,240,0.92)',
-        borderBottom: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        position: 'relative', zIndex: 5,
-      }}>
-        <MacTrafficLights />
-        <div style={{
-          flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600,
-          color: dark ? 'rgba(245,245,242,0.85)' : '#0E0E0C', letterSpacing: -0.1,
-        }}>{title}</div>
-        <div style={{ width: 52 }} />
+    <div style={{ display: 'grid', gridTemplateColumns: stacked ? '1fr' : '1fr 420px', height: '100%', width: '100%', overflow: stacked ? 'auto' : 'hidden', alignContent: stacked ? 'start' : 'stretch' }}>
+      <div style={{ padding: `${pad}px ${pad}px 0`, overflow: stacked ? 'visible' : 'auto', borderRight: stacked ? 'none' : `1px solid ${t.line}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
+          <Eyebrow color={t.muted}>{mode.name} · {subjName}</Eyebrow>
+          <div style={{ flex: 1 }} />
+          <div style={{ fontSize: 11, color: t.muted }}>Saved automatically</div>
+          <Btn t={t} kind="quiet" onClick={onPause} style={{ fontSize: 12, padding: '5px 10px' }}>Pause and exit</Btn>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ padding: '5px 11px', borderRadius: 6, background: theme.accentSoft, color: theme.accent, fontSize: 10, fontFamily: MONO, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+            {concept.name} · {LEVEL_NAMES[q.diff]}
+          </div>
+          <div style={{ flex: 1, height: 3, background: t.line, borderRadius: 2, overflow: 'hidden', maxWidth: 240 }}>
+            <div style={{ width: `${((a.i + (submitted ? 1 : 0)) / a.ids.length) * 100}%`, height: '100%', background: theme.accent, transition: 'width 0.3s' }} />
+          </div>
+          <div style={{ fontSize: 11, color: t.muted, fontFamily: MONO, fontWeight: 600 }}>{a.i + 1} / {a.ids.length}</div>
+        </div>
+
+        <div style={{ fontSize: bp === 'sm' ? 20 : 24, fontWeight: 600, color: t.ink, letterSpacing: -0.5, lineHeight: 1.3, marginBottom: 20, textWrap: 'pretty', maxWidth: 760 }}>
+          {q.prompt}
+        </div>
+
+        <div style={{ maxWidth: 760 }}>
+          <QuestionBody q={q} t={t} theme={theme} order={order} shown={shown} setShown={setSel} submitted={submitted} arrow={shownArrow} setArrow={setArrow} />
+        </div>
+
+        {!submitted && (
+          <div style={{ marginTop: 24, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => submit(false)} disabled={!canSubmit} style={{
+              padding: '12px 28px', borderRadius: 10, border: 'none', background: canSubmit ? t.ink : t.line, color: canSubmit ? t.bg : t.muted,
+              fontSize: 14, fontWeight: 600, cursor: canSubmit ? 'pointer' : 'default', fontFamily: 'inherit',
+            }}>Check Answer</button>
+            <Btn t={t} kind="quiet" onClick={() => submit(true)} title="Skip the guess and see the explanation. Counts as a miss so it comes back.">Not sure yet</Btn>
+            <div style={{ fontSize: 11, color: t.muted, fontFamily: MONO }}>{hint}</div>
+          </div>
+        )}
+        {submitted && <div style={{ height: 24 }} />}
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', overflow: 'hidden' }}>
-        {children}
+
+      <div ref={rightRef} style={{ padding: `${pad}px ${pad}px ${pad}px`, overflow: stacked ? 'visible' : 'auto', background: t.panel, borderTop: stacked ? `1px solid ${t.line}` : 'none' }}>
+        {!submitted ? (
+          <>
+            <Eyebrow color={t.muted} style={{ marginBottom: 12 }}>COMMIT FIRST</Eyebrow>
+            <div style={{ padding: 18, background: t.card, border: `1px solid ${t.line}`, borderRadius: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: t.ink, letterSpacing: -0.2 }}>{concept.name}</div>
+              <div style={{ fontSize: 12, color: t.muted, marginTop: 10, lineHeight: 1.55 }}>
+                Pick your best answer, then the explanation opens. A confident guess teaches more than peeking. If you have no idea, choose "Not sure yet" and see the idea right away.
+              </div>
+            </div>
+            {bp === 'lg' && (
+              <div style={{ marginTop: 16, padding: 18, background: t.card, border: `1px solid ${t.line}`, borderRadius: 14 }}>
+                <Eyebrow color={t.muted} style={{ marginBottom: 10 }}>SHORTCUTS</Eyebrow>
+                {[['1 – 4', 'Select answer'], ['⏎', 'Check, then next'], ['→', 'Next question'], ['⌘ K', 'Commands']].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
+                    <kbd style={{ fontFamily: MONO, fontWeight: 700, color: t.ink, background: t.line, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{k}</kbd>
+                    <span style={{ color: t.muted }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <ExplainPanel q={q} t={t} theme={theme} done={done} order={order} record={data.q[q.id]} isLast={isLast} retry={retry}
+            flagged={data.flagged.indexOf(q.id) >= 0} onToggleFlag={() => onToggleFlag(q.id)} onNext={onNext} />
+        )}
       </div>
     </div>
   );
 }
 
+// ═══ Summary: facts, not fireworks ═══
+function Summary({ t, theme, bp, pad, summary, onHome, onAgain, onRetry }) {
+  const n = summary.answers.length;
+  const c = summary.answers.filter(x => x.ok).length;
+  const missed = summary.answers.filter(x => !x.ok);
+  const retry = summary.mode === 'retry';
+  const concepts = [];
+  missed.forEach(x => { const nm = CBY[QBY[x.id].concept].name; if (concepts.indexOf(nm) < 0) concepts.push(nm); });
+  const title = retry ? 'Retry finished.' : (n >= 3 && c / n >= 0.8) ? 'Clean reaction, Connor.' : 'Session complete.';
+  const tile = (value, label, color) => (
+    <div style={{ flex: 1, textAlign: 'center', minWidth: 90 }}>
+      <div style={{ fontSize: 36, fontWeight: 700, color: color || t.ink, letterSpacing: -0.8 }}>{value}</div>
+      <Eyebrow color={t.muted} style={{ marginTop: 2 }}>{label}</Eyebrow>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100%', width: '100%', padding: pad + 8, overflow: 'auto' }}>
+      <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
+        <Eyebrow color={theme.accent} style={{ marginBottom: 14, letterSpacing: 1.6 }}>{retry ? 'RETRY COMPLETE' : 'SESSION COMPLETE'}</Eyebrow>
+        <div style={{ fontSize: bp === 'sm' ? 34 : 46, fontWeight: 700, color: t.ink, letterSpacing: -1.2, lineHeight: 1.05 }}>{title}</div>
+        <div style={{ marginTop: 28, padding: 24, background: t.card, border: `1px solid ${t.line}`, borderRadius: 16, display: 'flex', justifyContent: 'space-around', gap: 8 }}>
+          {tile(n, 'REVIEWED')}
+          {!retry && tile(c, 'RIGHT FIRST TRY', theme.accent)}
+          {tile(retry ? summary.answers.filter(x => x.ok).length : missed.length, retry ? 'RIGHT THIS TIME' : 'COMING BACK')}
+        </div>
+        {!retry && missed.length > 0 && (
+          <div style={{ marginTop: 16, textAlign: 'left', padding: 16, background: t.card, border: `1px solid ${t.line}`, borderRadius: 14 }}>
+            <Eyebrow color={t.muted} style={{ marginBottom: 8 }}>COMES BACK TOMORROW</Eyebrow>
+            <div style={{ fontSize: 14, color: t.ink, lineHeight: 1.6 }}>{concepts.join(' · ')}</div>
+            <div style={{ fontSize: 12, color: t.muted, marginTop: 8 }}>Missed ideas return after a day so they have time to settle.</div>
+          </div>
+        )}
+        <div style={{ marginTop: 24, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button onClick={onHome} style={{ padding: '12px 28px', borderRadius: 10, border: 'none', background: t.ink, color: t.bg, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Back to Today</button>
+          {!retry && <Btn t={t} onClick={onAgain}>Another round</Btn>}
+          {!retry && missed.length > 0 && <Btn t={t} onClick={onRetry}>Retry the missed ones</Btn>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══ Progress: real counts only ═══
+function StatTile({ t, label, value, sub }) {
+  return (
+    <div style={{ flex: '1 1 140px', padding: '14px 16px', background: t.card, border: `1px solid ${t.line}`, borderRadius: 12 }}>
+      <Eyebrow color={t.muted}>{label}</Eyebrow>
+      <div style={{ fontSize: 26, fontWeight: 700, color: t.ink, letterSpacing: -0.6, marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: t.muted, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Bar({ t, theme, solid, learning, fresh }) {
+  const total = solid + learning + fresh || 1;
+  const w = (x) => `${(x / total) * 100}%`;
+  return (
+    <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: t.line }} aria-hidden="true">
+      <div style={{ width: w(solid), background: theme.accent }} />
+      <div style={{ width: w(learning), background: theme.accent + '55' }} />
+    </div>
+  );
+}
+
+function ProgressView({ t, theme, bp, pad, data }) {
+  const all = Engine.stats(data, null);
+  return (
+    <div style={{ padding: `${pad + 8}px ${pad + 8}px 40px`, overflow: 'auto', height: '100%', width: '100%' }}>
+      <div style={{ maxWidth: 940, margin: '0 auto' }}>
+        <Eyebrow color={theme.accent} style={{ marginBottom: 12 }}>PROGRESS</Eyebrow>
+        <div style={{ fontSize: bp === 'sm' ? 28 : 36, fontWeight: 700, color: t.ink, letterSpacing: -1, lineHeight: 1.1 }}>What is sticking</div>
+        <div style={{ marginTop: 10, fontSize: 14, color: t.muted, lineHeight: 1.55, maxWidth: 680 }}>
+          <b style={{ color: t.ink }}>Solid</b> means right on the first try across three spaced reviews. Finishing questions is not the same as knowing them, so only first-try answers count toward accuracy. Everything here comes from your actual answers.
+        </div>
+
+        <div style={{ marginTop: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <StatTile t={t} label="ANSWERED" value={all.n} sub={all.n ? 'first attempts' : 'nothing yet'} />
+          <StatTile t={t} label="FIRST-TRY ACCURACY" value={all.acc == null ? 'n/a' : pct(all.acc)} sub={all.n ? `${all.c} of ${all.n}` : 'appears after your first answers'} />
+          <StatTile t={t} label="SOLID" value={all.solid} sub={`of ${all.total} questions`} />
+          <StatTile t={t} label="READY TO REVISIT" value={all.ready} sub="no pressure" />
+        </div>
+
+        {SUBJECTS.map(s => {
+          const ss = Engine.stats(data, q => q.subject === s.id);
+          const areas = [];
+          CONCEPTS.filter(c => c.subject === s.id).forEach(c => { if (areas.indexOf(c.area) < 0) areas.push(c.area); });
+          return (
+            <div key={s.id} style={{ marginTop: 30 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: t.ink, letterSpacing: -0.3 }}>{s.name}</div>
+                <div style={{ fontSize: 11, color: t.muted, fontFamily: MONO }}>{s.code ? `${s.code} · ${s.credits} CR` : 'FOUNDATION REVIEW'}</div>
+                <div style={{ flex: 1 }} />
+                <div style={{ fontSize: 12, color: t.muted }}>
+                  {ss.seen} of {ss.total} seen · {ss.solid} solid · {ss.acc == null ? 'no first-try data yet' : `${pct(ss.acc)} first try (${ss.n})`}
+                </div>
+              </div>
+              <div style={{ marginTop: 12, background: t.card, border: `1px solid ${t.line}`, borderRadius: 14, overflow: 'hidden' }}>
+                {areas.map((area, ai) => (
+                  <div key={area} style={{ borderTop: ai ? `1px solid ${t.line}` : 'none' }}>
+                    <Eyebrow color={t.muted} style={{ padding: '12px 16px 4px' }}>{area}</Eyebrow>
+                    {CONCEPTS.filter(c => c.subject === s.id && c.area === area).map(c => {
+                      const cs = Engine.stats(data, q => q.concept === c.id);
+                      const look = cs.n >= 3 && cs.acc < 0.6;
+                      return (
+                        <div key={c.id} style={{ display: 'grid', gridTemplateColumns: bp === 'sm' ? '1fr' : 'minmax(160px, 1.3fr) 1fr minmax(170px, 1fr)', gap: bp === 'sm' ? 6 : 16, alignItems: 'center', padding: '9px 16px' }}>
+                          <div style={{ fontSize: 13, color: t.ink, fontWeight: 500 }}>
+                            {c.name}{look && <span style={{ marginLeft: 8, fontSize: 9, fontFamily: MONO, letterSpacing: 1.2, fontWeight: 700, color: t.bad }}>WORTH A LOOK</span>}
+                          </div>
+                          <Bar t={t} theme={theme} solid={cs.solid} learning={cs.learning} fresh={cs.fresh} />
+                          <div style={{ fontSize: 11, color: t.muted, fontFamily: MONO }}>
+                            {cs.solid} solid · {cs.learning} learning · {cs.fresh} new{cs.n ? ` · ${pct(cs.acc)} (${cs.n})` : ''}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {all.n === 0 && <div style={{ marginTop: 24, fontSize: 13, color: t.muted }}>Nothing to show yet. Answer a few questions and this page fills in with real numbers.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ═══ Backup: simple export / import, kept honest ═══
+function BackupView({ t, theme, bp, pad, data, saved, onExport, onImport, onReset }) {
+  const [msg, setMsg] = React.useState(null);
+  const [pending, setPending] = React.useState(null);
+  const [confirmReset, setConfirmReset] = React.useState(false);
+  const fileRef = React.useRef(null);
+  const total = Engine.stats(data, null);
+
+  const pick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { setPending(window.Retron.parseImport(String(reader.result))); setMsg(null); }
+      catch (err) { setPending(null); setMsg('That file is not a Retron backup. Nothing was changed.'); }
+    };
+    reader.onerror = () => setMsg('Could not read that file. Nothing was changed.');
+    reader.readAsText(f);
+  };
+  const card = { padding: 18, background: t.card, border: `1px solid ${t.line}`, borderRadius: 14, marginTop: 14 };
+  const pendingAnswers = pending ? Object.keys(pending.data.q).reduce((n, k) => n + (pending.data.q[k].n || 0), 0) : 0;
+
+  return (
+    <div style={{ padding: `${pad + 8}px ${pad + 8}px 40px`, overflow: 'auto', height: '100%', width: '100%' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+        <Eyebrow color={theme.accent} style={{ marginBottom: 12 }}>BACKUP</Eyebrow>
+        <div style={{ fontSize: bp === 'sm' ? 28 : 36, fontWeight: 700, color: t.ink, letterSpacing: -1, lineHeight: 1.1 }}>Keep your progress safe</div>
+        <div style={{ marginTop: 10, fontSize: 14, color: t.muted, lineHeight: 1.55 }}>
+          Progress is saved automatically in this browser on this computer. Clearing browser data would erase it, so export a backup file once in a while.
+        </div>
+
+        {!saved && (
+          <div style={{ ...card, borderColor: t.bad + '66', background: t.bad + '0d', color: t.ink, fontSize: 13, lineHeight: 1.5 }}>
+            This browser is blocking saving, so progress will be lost when you close the page. Open the Retron file directly in Safari or Chrome to keep it.
+          </div>
+        )}
+
+        <div style={card}>
+          <Eyebrow color={t.muted}>EXPORT</Eyebrow>
+          <div style={{ fontSize: 13, color: t.ink, marginTop: 8, lineHeight: 1.5 }}>
+            Saves a small file with your answers and review schedule. Last backup: {fmtDate(data.lastExport)}. You have {plural(total.n, 'saved answer')}.
+          </div>
+          <Btn t={t} kind="primary" onClick={onExport} style={{ marginTop: 12 }}>Export backup</Btn>
+        </div>
+
+        <div style={card}>
+          <Eyebrow color={t.muted}>IMPORT</Eyebrow>
+          <div style={{ fontSize: 13, color: t.ink, marginTop: 8, lineHeight: 1.5 }}>Restore from a backup file. This replaces the progress currently on this computer.</div>
+          <input ref={fileRef} type="file" accept=".json,application/json" onChange={pick} style={{ display: 'none' }} />
+          <Btn t={t} onClick={() => fileRef.current && fileRef.current.click()} style={{ marginTop: 12 }}>Choose backup file</Btn>
+          {msg && <div style={{ marginTop: 10, fontSize: 13, color: t.bad }}>{msg}</div>}
+          {pending && (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: t.hover }}>
+              <div style={{ fontSize: 13, color: t.ink }}>
+                Backup from {fmtDate(pending.exportedAt)} with {plural(pendingAnswers, 'saved answer')}. Replace current progress with it?
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <Btn t={t} kind="primary" onClick={() => { onImport(pending.data); setPending(null); setMsg(null); }}>Replace progress</Btn>
+                <Btn t={t} onClick={() => setPending(null)}>Cancel</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {data.flagged.length > 0 && (
+          <div style={card}>
+            <Eyebrow color={t.muted}>FLAGGED QUESTIONS</Eyebrow>
+            <div style={{ fontSize: 12, color: t.muted, marginTop: 6 }}>Marked as unclear or wrong. Worth checking against your course materials.</div>
+            {data.flagged.map(id => QBY[id] && (
+              <div key={id} style={{ marginTop: 10, fontSize: 13, color: t.ink, lineHeight: 1.45 }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: t.muted }}>{id}</span> {QBY[id].prompt}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={card}>
+          <Eyebrow color={t.muted}>START OVER</Eyebrow>
+          <div style={{ fontSize: 13, color: t.ink, marginTop: 8, lineHeight: 1.5 }}>Erase all saved progress on this computer. Export a backup first if you might want it back.</div>
+          {!confirmReset
+            ? <Btn t={t} kind="danger" onClick={() => setConfirmReset(true)} style={{ marginTop: 12 }}>Erase progress</Btn>
+            : (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, color: t.ink }}>Erase everything?</span>
+                <Btn t={t} kind="danger" onClick={() => { onReset(); setConfirmReset(false); }}>Yes, erase</Btn>
+                <Btn t={t} onClick={() => setConfirmReset(false)}>Cancel</Btn>
+              </div>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══ Command palette (⌘K), now with working commands ═══
+function CommandPalette({ onClose, t, theme, items }) {
+  const [text, setText] = React.useState('');
+  const [hi, setHi] = React.useState(0);
+  const shown = items.filter(it => it.label.toLowerCase().indexOf(text.toLowerCase()) >= 0);
+  React.useEffect(() => { setHi(0); }, [text]);
+  const run = (it) => { if (!it) return; onClose(); it.action(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, shown.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); run(shown[hi]); }
+  };
+  return (
+    <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 100, zIndex: 200, backdropFilter: 'blur(4px)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 92%)', background: t.card, borderRadius: 14, boxShadow: '0 30px 80px rgba(0,0,0,0.25)', overflow: 'hidden', maxHeight: '70%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${t.line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.5" stroke={t.muted} strokeWidth="1.5" fill="none" /><path d="M9.5 9.5L13 13" stroke={t.muted} strokeWidth="1.5" strokeLinecap="round" /></svg>
+          <input autoFocus value={text} onChange={e => setText(e.target.value)} onKeyDown={onKey} placeholder="Type a command…"
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: t.ink, fontFamily: 'inherit' }} />
+          <kbd style={{ fontFamily: MONO, fontWeight: 700, color: t.muted, background: t.line, padding: '3px 8px', borderRadius: 4, fontSize: 10 }}>ESC</kbd>
+        </div>
+        <div style={{ overflow: 'auto' }}>
+          {shown.length === 0 && <div style={{ padding: '14px 18px', fontSize: 13, color: t.muted }}>No matching command.</div>}
+          {shown.map((it, i) => (
+            <div key={it.label} onClick={() => run(it)} onMouseEnter={() => setHi(i)}
+              style={{ padding: '12px 18px', fontSize: 13, color: t.ink, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < shown.length - 1 ? `1px solid ${t.line}` : 'none', background: i === hi ? theme.accentSoft : 'transparent' }}>
+              {it.label}
+              {it.kbd && <span style={{ color: theme.accent, fontWeight: 700 }}>{it.kbd}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══ App shell ═══
+function RetronApp({ theme, themeKey, setThemeKey, density, setDensity, store }) {
+  const { data, update, replace, saved, ref } = store;
+  const t = tokensFor(theme);
+  const width = useWidth();
+  const bp = width < 820 ? 'sm' : width < 1240 ? 'md' : 'lg';
+  const pad = density === 'compact' ? 20 : 32;
+  const [ui, setUi] = React.useState({ screen: 'home', summary: null });
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const go = (screen) => setUi(u => ({ ...u, screen }));
+  const setFocus = (id) => update(d => { d.focus = id; });
+
+  const startSession = (modeId, subject, ids) => {
+    update(d => { d.active = Engine.newSession(d, modeId, subject == null ? d.focus : subject, undefined, ids); });
+    setUi({ screen: 'session', summary: null });
+  };
+  const onAnswer = (info) => update(d => {
+    Engine.answer(d, info.id, info.ok, { retry: d.active.mode === 'retry' });
+    d.active.answers.push(info);
+  });
+  const onNext = () => {
+    const a = ref.current.active;
+    if (!a) return;
+    if (a.i + 1 >= a.ids.length) {
+      let summary = null;
+      update(d => {
+        const act = d.active;
+        Engine.finishSession(d);
+        summary = { mode: act.mode, subject: act.subject, answers: act.answers };
+      });
+      setUi({ screen: 'summary', summary });
+    } else update(d => { d.active.i += 1; });
+  };
+  const toggleFlag = (id) => update(d => {
+    const i = d.flagged.indexOf(id);
+    if (i >= 0) d.flagged.splice(i, 1); else d.flagged.push(id);
+  });
+  const exportBackup = () => {
+    update(d => { d.lastExport = Date.now(); });
+    const text = window.Retron.exportPayload(ref.current);
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const el = document.createElement('a');
+    const iso = new Date().toISOString().slice(0, 10);
+    el.href = url; el.download = `retron-backup-${iso}.json`;
+    document.body.appendChild(el); el.click(); el.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
+
+  // ⌘K
+  React.useEffect(() => {
+    const h = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPaletteOpen(p => !p); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  const screen = ui.screen === 'session' && !data.active ? 'home' : ui.screen === 'summary' && !ui.summary ? 'home' : ui.screen;
+  let main;
+  if (screen === 'session') {
+    main = <SessionView key={data.active.ids.join(',')} t={t} theme={theme} bp={bp} pad={pad} data={data} blocked={paletteOpen}
+      onAnswer={onAnswer} onNext={onNext} onPause={() => go('home')} onToggleFlag={toggleFlag} />;
+  } else if (screen === 'summary') {
+    const s = ui.summary;
+    const missedIds = s.answers.filter(x => !x.ok).map(x => x.id);
+    main = <Summary t={t} theme={theme} bp={bp} pad={pad} summary={s} onHome={() => go('home')}
+      onAgain={() => startSession(s.mode === 'retry' ? 'daily' : s.mode, s.subject)}
+      onRetry={() => startSession('retry', s.subject, missedIds)} />;
+  } else if (screen === 'progress') {
+    main = <ProgressView t={t} theme={theme} bp={bp} pad={pad} data={data} />;
+  } else if (screen === 'backup') {
+    main = <BackupView t={t} theme={theme} bp={bp} pad={pad} data={data} saved={saved} onExport={exportBackup}
+      onImport={(d) => { replace(d); }} onReset={() => replace(window.Retron.Engine.blank())} />;
+  } else {
+    main = <Home t={t} theme={theme} bp={bp} pad={pad} data={data} onStart={(m) => startSession(m)} onResume={() => go('session')} setFocus={setFocus} />;
+  }
+
+  const items = [
+    { label: 'Start Daily Review', kbd: '5 Q', action: () => startSession('daily') },
+    { label: 'Start Quick Warm-Up', kbd: '~2 min', action: () => startSession('warm') },
+    { label: 'Start Deep Practice', kbd: '~15 min', action: () => startSession('deep') },
+    ...(data.active ? [{ label: 'Resume paused session', action: () => go('session') }] : []),
+    { label: 'Focus: Mix of all courses', kbd: data.focus === 'mixed' ? '●' : '', action: () => { setFocus('mixed'); go('home'); } },
+    ...SUBJECTS.map(s => ({ label: `Focus: ${s.name}`, kbd: data.focus === s.id ? '●' : '', action: () => { setFocus(s.id); go('home'); } })),
+    { label: 'Go to Today', action: () => go('home') },
+    { label: 'Go to Progress', action: () => go('progress') },
+    { label: 'Go to Backup', action: () => go('backup') },
+    { label: 'Export backup', action: exportBackup },
+    ...Object.entries(THEMES).map(([k, th]) => ({ label: `Theme: ${th.name}`, kbd: themeKey === k ? '●' : '', action: () => setThemeKey(k) })),
+    { label: `Density: ${density === 'comfy' ? 'Switch to compact' : 'Switch to comfy'}`, action: () => setDensity(density === 'comfy' ? 'compact' : 'comfy') },
+  ];
+
+  const titles = { home: 'Today', progress: 'Progress', backup: 'Backup', summary: 'Session complete',
+    session: data.active ? MODES[data.active.mode].name : 'Session' };
+
+  return (
+    <CustomMacWindow dark={theme.dark} title={`Retron · ${titles[screen]}`}
+      style={{ width: 'min(1560px, 100%)', height: bp === 'sm' ? 'calc(100vh - 70px)' : 'clamp(620px, calc(100vh - 150px), 970px)', minHeight: 560 }}>
+      <div style={{ display: 'flex', width: '100%', height: '100%', position: 'relative', flexDirection: bp === 'sm' ? 'column' : 'row' }}>
+        {bp === 'sm'
+          ? <TopNav t={t} theme={theme} screen={screen} go={go} />
+          : <Sidebar t={t} theme={theme} data={data} screen={screen} go={go} setFocus={setFocus} width={bp === 'lg' ? 260 : 220} />}
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: t.winBg }}>
+          {!saved && screen !== 'backup' && (
+            <div style={{ padding: '8px 16px', fontSize: 12, background: t.bad + '14', color: t.ink, borderBottom: `1px solid ${t.line}` }}>
+              This browser is not saving progress. Open the file directly in Safari or Chrome to keep it.
+            </div>
+          )}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>{main}</div>
+        </div>
+        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} t={t} theme={theme} items={items} />}
+      </div>
+    </CustomMacWindow>
+  );
+}
+
+// ═══ Root: theme, density, and the original edit-mode hooks ═══
 function Root() {
-  const [themeKey, setThemeKey] = React.useState(TWEAK_DEFAULS.theme);
-  const [density, setDensity] = React.useState(TWEAK_DEFAULS.density);
+  const store = useRetronData();
+  const { data, update } = store;
+  const themeKey = THEMES[data.prefs.theme] ? data.prefs.theme : TWEAK_DEFAULS.theme;
+  const density = data.prefs.density || TWEAK_DEFAULS.density;
   const theme = { ...THEMES[themeKey], key: themeKey };
   React.useEffect(() => { applyThemeVars(theme); }, [themeKey]);
+  React.useEffect(() => { document.title = 'Retron · Study Companion'; }, []);
 
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   React.useEffect(() => {
     const handler = (e) => {
-      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
-      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+      if (e.data && e.data.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data && e.data.type === '__deactivate_edit_mode') setTweaksOpen(false);
     };
     window.addEventListener('message', handler);
-    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch (e) { /* standalone */ }
     return () => window.removeEventListener('message', handler);
   }, []);
 
   const changeTheme = (k) => {
-    setThemeKey(k);
-    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { theme: k } }, '*');
+    update(d => { d.prefs.theme = k; });
+    try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { theme: k } }, '*'); } catch (e) { /* standalone */ }
   };
-  const changeDensity = (d) => {
-    setDensity(d);
-    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { density: d } }, '*');
+  const changeDensity = (v) => {
+    update(d => { d.prefs.density = v; });
+    try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { density: v } }, '*'); } catch (e) { /* standalone */ }
   };
 
-  const W = 1560, H = 970;
-
+  const width = useWidth();
+  const small = width < 820;
   return (
-    <div style={{
-      minHeight: '100vh', width: '100%',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '40px 20px',
-    }} data-screen-label="01 ChemLab">
-      <div className="stage-caption" style={{ color: theme.dark ? 'rgba(255,255,255,0.7)' : undefined }}>
-        RETRON · CHEMLAB FOR MACBOOK PRO 16"
-        <span className="sub" style={{ color: theme.dark ? 'rgba(255,255,255,0.4)' : undefined }}>
-          FOR CONNOR · RUTGERS ORGO II · ACS PREP · ⌘K FOR COMMAND PALETTE
-        </span>
-      </div>
-
-      <CustomMacWindow width={W} height={H} dark={theme.dark}
-        title="ChemLab — Daily Challenge · 04.20.26">
-        <ChemLab theme={theme} themeKey={themeKey} setThemeKey={changeTheme}
-          themes={THEMES} density={density} setDensity={changeDensity} />
-      </CustomMacWindow>
+    <div style={{ minHeight: '100vh', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: small ? '10px 8px' : '40px 20px' }} data-screen-label="01 Retron">
+      {!small && (
+        <div className="stage-caption" style={{ color: theme.dark ? 'rgba(255,255,255,0.7)' : undefined }}>
+          RETRON · STUDY COMPANION
+          <span className="sub" style={{ color: theme.dark ? 'rgba(255,255,255,0.4)' : undefined }}>
+            FOR CONNOR · RUTGERS · SPRING 2027 · ⌘K FOR COMMANDS
+          </span>
+        </div>
+      )}
+      <RetronApp theme={theme} themeKey={themeKey} setThemeKey={changeTheme} density={density} setDensity={changeDensity} store={store} />
 
       {tweaksOpen && (
         <div className="tweaks">
           <h4>Color theme</h4>
           <div className="theme-row">
-            {Object.entries(THEMES).map(([k, t]) => (
-              <div key={k}
-                className="swatch"
+            {Object.entries(THEMES).map(([k, th]) => (
+              <div key={k} className="swatch"
                 style={{
-                  background: t.dark ? '#0A0A09' : '#FAFAF7',
-                  color: t.accent,
+                  background: th.dark ? '#0A0A09' : '#FAFAF7', color: th.accent,
                   border: '2px solid ' + (themeKey === k ? '#0E0E0C' : 'rgba(0,0,0,0.1)'),
                   transform: themeKey === k ? 'scale(1.04)' : 'scale(1)',
                 }}
                 onClick={() => changeTheme(k)}
-              >{t.name.split(' ')[0].toUpperCase()}</div>
+              >{th.name.split(' ')[0].toUpperCase()}</div>
             ))}
           </div>
           <h4 style={{ marginTop: 14 }}>Density</h4>
           <div className="density-row">
             {['comfy', 'compact'].map(d => (
-              <button key={d}
-                className={'density-btn' + (density === d ? ' active' : '')}
-                onClick={() => changeDensity(d)}
-              >{d.toUpperCase()}</button>
+              <button key={d} className={'density-btn' + (density === d ? ' active' : '')} onClick={() => changeDensity(d)}>{d.toUpperCase()}</button>
             ))}
           </div>
         </div>
@@ -1513,6 +2742,7 @@ function Root() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+
 </script>
 
 <template id="__bundler_thumbnail">
